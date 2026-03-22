@@ -1,0 +1,727 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>カスタムゲーム — GameStat</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=Noto+Sans+JP:wght@300;400;500;700;900&family=Orbitron:wght@700;900&family=JetBrains+Mono:wght@400;600;700&display=swap" rel="stylesheet">
+<script src="https://cdnjs.cloudflare.com/ajax/libs/Chart.js/4.4.1/chart.umd.min.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/chartjs-adapter-date-fns@3/dist/chartjs-adapter-date-fns.bundle.min.js"></script>
+<style>
+:root{
+  --bg:#050c18;--bg3:#0b1428;
+  --surf:#0f1b2d;--surf2:#152135;--surf3:#1b2b42;
+  --bdr:#1a2e4a;--bdr2:#254270;--bdr3:#2e5490;
+  --c1:#00d9ff;--c2:#ff5f2e;--c3:#7c3aed;
+  --green:#00e676;--red:#ff3d5a;--yellow:#ffd600;--orange:#ff9800;
+  --txt:#dde6f5;--txt2:#7a95ba;--txt3:#3d5470;
+  --glow1:rgba(0,217,255,.2);
+  --fd:'Orbitron',monospace;--fm:'JetBrains Mono',monospace;--fb:'Noto Sans JP',sans-serif;
+}
+*,*::before,*::after{box-sizing:border-box;margin:0;padding:0}
+html{scroll-behavior:smooth}
+body{
+  font-family:var(--fb);background:var(--bg);color:var(--txt);min-height:100vh;overflow-x:hidden;
+  background-image:
+    radial-gradient(ellipse 70% 50% at 50% 0%,rgba(0,217,255,.05) 0%,transparent 55%),
+    radial-gradient(ellipse 40% 40% at 95% 85%,rgba(124,58,237,.04) 0%,transparent 50%),
+    url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='256' height='256'%3E%3Cfilter id='n'%3E%3CfeTurbulence baseFrequency='.85' numOctaves='4' stitchTiles='stitch'/%3E%3C/filter%3E%3Crect width='100%25' height='100%25' filter='url(%23n)' opacity='.02'/%3E%3C/svg%3E");
+}
+
+/* ── NAV ── */
+#nav{
+  position:fixed;top:0;left:0;right:0;z-index:200;height:52px;
+  display:flex;align-items:center;padding:0 16px;gap:8px;
+  background:rgba(5,12,24,.92);backdrop-filter:blur(20px);border-bottom:1px solid var(--bdr);
+}
+.nav-logo{font-family:var(--fd);font-size:11px;font-weight:900;color:var(--c1);letter-spacing:3px;text-shadow:0 0 14px var(--c1);white-space:nowrap;text-decoration:none}
+.nav-logo span{color:var(--txt3)}
+.nav-sep{color:var(--txt3);font-size:14px}
+.nav-sub{font-family:var(--fd);font-size:10px;font-weight:700;color:var(--txt2);letter-spacing:2px;white-space:nowrap}
+.nav-spacer{flex:1}
+#s-badge{display:flex;align-items:center;gap:5px;font-family:var(--fm);font-size:9px;color:var(--txt3);background:var(--surf);border:1px solid var(--bdr);border-radius:4px;padding:3px 9px;white-space:nowrap;flex-shrink:0}
+.s-dot{width:5px;height:5px;border-radius:50%;flex-shrink:0;background:var(--txt3)}
+.s-dot.live{background:var(--green);box-shadow:0 0 6px var(--green);animation:pulse 2s infinite}
+.s-dot.error{background:var(--red)}
+.s-dot.loading{background:var(--yellow);animation:pulse .8s infinite}
+@keyframes pulse{0%,100%{opacity:1}50%{opacity:.35}}
+.btn-icon{background:none;border:1px solid var(--bdr);border-radius:5px;color:var(--txt2);cursor:pointer;padding:4px 9px;font-size:11px;transition:all .2s;flex-shrink:0}
+.btn-icon:hover{color:var(--c1);border-color:var(--c1)}
+
+/* ── LAYOUT ── */
+main{max-width:900px;margin:0 auto;padding:68px 14px 64px;position:relative;z-index:1}
+
+/* ── SCREENS ── */
+#loading-screen{display:flex;flex-direction:column;align-items:center;justify-content:center;min-height:60vh;gap:18px}
+.spinner{width:38px;height:38px;border:2px solid var(--bdr2);border-top-color:var(--c1);border-radius:50%;animation:spin .8s linear infinite}
+@keyframes spin{to{transform:rotate(360deg)}}
+.load-txt{font-size:11px;color:var(--txt3);letter-spacing:1px;font-family:var(--fm)}
+#error-screen{display:none;flex-direction:column;align-items:center;justify-content:center;min-height:60vh;gap:14px;text-align:center;padding:20px}
+#error-screen h2{font-family:var(--fd);font-size:15px;color:var(--red);letter-spacing:1px}
+#error-screen p{font-size:11px;color:var(--txt2);max-width:400px;line-height:1.9}
+.btn-retry{font-size:11px;font-weight:700;padding:8px 22px;border-radius:6px;border:none;cursor:pointer;background:var(--c1);color:#000}
+
+/* ── SECTION ── */
+.sec-hd{display:flex;align-items:center;gap:10px;margin:40px 0 18px}
+.sec-tag{font-family:var(--fm);font-size:9px;font-weight:700;color:var(--c1);background:rgba(0,217,255,.1);border:1px solid rgba(0,217,255,.2);border-radius:3px;padding:2px 7px;letter-spacing:2px;text-transform:uppercase;flex-shrink:0}
+.sec-title{font-family:var(--fd);font-size:13px;font-weight:700;color:var(--txt);letter-spacing:.8px;white-space:nowrap}
+.sec-line{flex:1;height:1px;background:linear-gradient(to right,var(--bdr2),transparent)}
+
+/* ── HOME: SEARCH BAR ── */
+.search-wrap{display:flex;gap:8px;margin-bottom:14px;align-items:center}
+.search-input{
+  flex:1;background:var(--surf);border:1px solid var(--bdr2);border-radius:9px;
+  color:var(--txt);font-family:var(--fb);font-size:13px;padding:11px 16px;outline:none;
+  transition:border-color .2s;min-width:0;
+}
+.search-input:focus{border-color:var(--c1);box-shadow:0 0 0 2px rgba(0,217,255,.08)}
+.search-input::placeholder{color:var(--txt3)}
+.search-clear{background:var(--surf3);border:1px solid var(--bdr2);border-radius:7px;color:var(--txt2);cursor:pointer;padding:8px 12px;font-size:12px;transition:all .2s;flex-shrink:0}
+.search-clear:hover{color:var(--red);border-color:var(--red)}
+
+/* ── CATEGORY TABS ── */
+.cat-row{display:flex;gap:5px;flex-wrap:wrap;margin-bottom:16px}
+.cat-btn{font-size:10px;font-weight:500;padding:4px 11px;border-radius:18px;border:1px solid var(--bdr);background:transparent;color:var(--txt2);cursor:pointer;transition:all .2s;white-space:nowrap}
+.cat-btn:hover{border-color:var(--bdr2);color:var(--txt)}
+.cat-btn.on{background:rgba(0,217,255,.1);border-color:var(--c1);color:var(--c1)}
+
+/* ── RANKING TABS ── */
+.rank-tabs{display:flex;gap:4px;margin-bottom:14px}
+.rtab{font-size:10px;font-weight:600;padding:6px 16px;border-radius:20px;border:1px solid var(--bdr);background:transparent;color:var(--txt2);cursor:pointer;transition:all .2s}
+.rtab:hover,.rtab.on{background:rgba(0,217,255,.1);border-color:var(--c1);color:var(--c1)}
+
+/* ── GAME CARD (list) ── */
+.game-list{display:flex;flex-direction:column;gap:7px}
+.game-card{
+  display:grid;grid-template-columns:42px 1fr auto;align-items:center;gap:12px;
+  background:var(--surf);border:1px solid var(--bdr);border-radius:10px;
+  padding:12px 14px;cursor:pointer;transition:border-color .2s,background .15s,transform .15s;
+  text-decoration:none;
+}
+.game-card:hover{border-color:var(--bdr2);background:rgba(0,217,255,.03);transform:translateX(3px)}
+.game-card-rank{font-family:var(--fd);font-size:15px;font-weight:900;text-align:center;flex-shrink:0}
+.gc-rank-1{color:var(--yellow);text-shadow:0 0 10px rgba(255,214,0,.5)}
+.gc-rank-2{color:#c0c8d8}.gc-rank-3{color:#c97b3a}.gc-rank-n{color:var(--txt3);font-size:12px}
+.game-card-body{min-width:0}
+.gc-name{font-size:13px;font-weight:700;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;margin-bottom:3px;display:flex;align-items:center;gap:7px}
+.gc-cat{font-size:9px;padding:1px 6px;border-radius:3px;background:var(--surf3);color:var(--txt2);flex-shrink:0}
+.gc-desc{font-size:10px;color:var(--txt3);white-space:nowrap;overflow:hidden;text-overflow:ellipsis;max-width:100%}
+.game-card-stats{text-align:right;flex-shrink:0;min-width:64px}
+.gc-ccu{font-family:var(--fm);font-size:15px;font-weight:700;color:var(--c1);white-space:nowrap}
+.gc-ccu-lbl{font-size:9px;color:var(--txt3);margin-top:2px}
+.gc-fav{font-size:9px;color:var(--txt3);margin-top:3px;white-space:nowrap}
+.gc-avg{font-family:var(--fm);font-size:14px;font-weight:700;color:var(--c2);white-space:nowrap}
+
+/* no-result */
+.no-result{text-align:center;padding:40px 20px;color:var(--txt3);font-size:12px}
+
+/* info bar */
+.info-bar{display:flex;align-items:center;gap:10px;flex-wrap:wrap;background:var(--surf3);border-radius:7px;padding:7px 12px;margin-bottom:12px;font-size:10px;color:var(--txt2)}
+.info-bar span{display:flex;align-items:center;gap:4px}
+.info-bar strong{font-family:var(--fm);color:var(--c1)}
+
+/* ── DETAIL VIEW ── */
+#detail-view{display:none}
+
+.detail-hero{
+  background:var(--surf);border:1px solid var(--bdr);border-radius:14px;
+  padding:28px 20px;margin-bottom:10px;position:relative;overflow:hidden;
+}
+.detail-hero::before{
+  content:'';position:absolute;top:0;left:50%;transform:translateX(-50%);
+  width:50%;height:1px;
+  background:linear-gradient(to right,transparent,var(--c1),transparent);
+}
+.dh-header{display:flex;align-items:flex-start;gap:14px;margin-bottom:14px}
+.dh-cat-badge{
+  flex-shrink:0;width:48px;height:48px;border-radius:10px;
+  display:flex;align-items:center;justify-content:center;font-size:20px;
+  background:rgba(0,217,255,.1);border:1px solid rgba(0,217,255,.15);
+}
+.dh-title-wrap{flex:1;min-width:0}
+.dh-name{font-family:var(--fd);font-size:clamp(14px,3vw,20px);font-weight:900;color:var(--txt);letter-spacing:.5px;word-break:break-word;line-height:1.3}
+.dh-meta{display:flex;align-items:center;gap:8px;flex-wrap:wrap;margin-top:6px}
+.dh-badge{font-size:9px;font-weight:600;padding:2px 8px;border-radius:4px;letter-spacing:.5px}
+.dh-cat-tag{background:rgba(0,217,255,.1);color:var(--c1);border:1px solid rgba(0,217,255,.2)}
+.dh-id{font-family:var(--fm);font-size:9px;color:var(--txt3);padding:2px 6px;border-radius:3px;background:var(--surf3)}
+.dh-desc{font-size:12px;color:var(--txt2);line-height:1.8;word-break:break-word}
+.dh-stats{display:grid;grid-template-columns:repeat(4,1fr);gap:8px;margin-top:14px}
+@media(max-width:500px){.dh-stats{grid-template-columns:repeat(2,1fr)}}
+.dh-stat{background:var(--surf3);border-radius:8px;padding:10px 12px;text-align:center}
+.dh-stat-val{font-family:var(--fm);font-size:18px;font-weight:700;color:var(--c1);line-height:1}
+.dh-stat-val.green{color:var(--green)}
+.dh-stat-val.orange{color:var(--orange)}
+.dh-stat-val.purple{color:#a78bfa}
+.dh-stat-lbl{font-size:9px;color:var(--txt3);margin-top:4px;letter-spacing:.5px}
+
+/* chart card */
+.chart-card{background:var(--surf);border:1px solid var(--bdr);border-radius:12px;padding:16px 14px;margin-bottom:10px}
+.chart-ttl{font-size:11px;font-weight:700;color:var(--txt2);margin-bottom:12px;display:flex;align-items:center;gap:7px}
+.cdot{width:6px;height:6px;border-radius:50%;flex-shrink:0}
+
+/* share row */
+.share-row{display:flex;gap:8px;flex-wrap:wrap;margin-bottom:10px}
+.btn-share{font-size:10px;font-weight:600;padding:6px 14px;border-radius:7px;border:1px solid var(--bdr2);background:transparent;color:var(--txt2);cursor:pointer;transition:all .2s;display:flex;align-items:center;gap:5px}
+.btn-share:hover{border-color:var(--c1);color:var(--c1)}
+.btn-back{font-size:10px;font-weight:600;padding:6px 14px;border-radius:7px;border:1px solid var(--bdr);background:transparent;color:var(--txt2);cursor:pointer;transition:all .2s;display:flex;align-items:center;gap:5px}
+.btn-back:hover{border-color:var(--c1);color:var(--c1)}
+
+/* not found */
+#not-found{display:none;flex-direction:column;align-items:center;justify-content:center;min-height:50vh;gap:14px;text-align:center}
+#not-found h2{font-family:var(--fd);font-size:15px;color:var(--red)}
+#not-found p{font-size:11px;color:var(--txt2);max-width:340px;line-height:1.8}
+
+/* toast */
+.toast{position:fixed;bottom:20px;left:50%;transform:translateX(-50%) translateY(20px);background:var(--surf2);border:1px solid var(--c1);border-radius:8px;padding:8px 18px;font-size:11px;color:var(--c1);opacity:0;transition:all .3s;pointer-events:none;z-index:999;white-space:nowrap}
+.toast.show{opacity:1;transform:translateX(-50%) translateY(0)}
+
+footer{text-align:center;padding:24px 14px;border-top:1px solid var(--bdr);margin-top:56px;font-size:9px;color:var(--txt3);letter-spacing:1px;line-height:2.4}
+footer a{color:var(--txt3);text-decoration:none}
+footer a:hover{color:var(--c1)}
+</style>
+</head>
+<body>
+
+<nav id="nav">
+  <a href="index.html" class="nav-logo">⬡ GAME<span>STAT</span></a>
+  <span class="nav-sep">/</span>
+  <span class="nav-sub">カスタムゲーム</span>
+  <div class="nav-spacer"></div>
+  <div id="s-badge"><div class="s-dot loading" id="s-dot"></div><span id="s-txt">接続中...</span></div>
+  <div id="last-ts" style="display:none;font-family:'JetBrains Mono',monospace;font-size:9px;color:var(--txt3);background:var(--surf);border:1px solid var(--bdr);border-radius:4px;padding:3px 9px;white-space:nowrap;flex-shrink:0"></div>
+  <button class="btn-icon" onclick="fetchAndRender()" title="再取得">↺</button>
+</nav>
+
+<main>
+  <!-- Loading -->
+  <div id="loading-screen">
+    <div class="spinner"></div>
+    <p class="load-txt" id="load-msg">データを取得中...</p>
+  </div>
+
+  <!-- Error -->
+  <div id="error-screen">
+    <h2>⚠ 取得失敗</h2>
+    <p id="err-msg"></p>
+    <button class="btn-retry" onclick="fetchAndRender()">再試行</button>
+  </div>
+
+  <!-- HOME VIEW -->
+  <div id="home-view" style="display:none">
+    <div class="sec-hd" style="margin-top:0">
+      <span class="sec-tag">LIVE</span>
+      <span class="sec-title">カスタムゲーム ダッシュボード</span>
+      <div class="sec-line"></div>
+    </div>
+
+    <!-- Search -->
+    <div class="search-wrap">
+      <input class="search-input" id="search-input" type="text"
+        placeholder="🔍 ゲーム名で検索..." oninput="applyFilters()">
+      <button class="search-clear" onclick="clearSearch()" title="クリア">✕</button>
+    </div>
+
+    <!-- Category filter -->
+    <div class="cat-row" id="cat-row"></div>
+
+    <!-- Info -->
+    <div class="info-bar" id="info-bar" style="display:none">
+      <span>📊 スナップショット: <strong id="inf-snaps">—</strong> 件</span>
+      <span>📅 期間: <strong id="inf-span">—</strong></span>
+      <span>🎮 ユニークゲーム: <strong id="inf-games">—</strong> 件</span>
+    </div>
+
+    <!-- Ranking tabs -->
+    <div class="rank-tabs">
+      <button class="rtab on" onclick="switchRankTab('now',this)">現在</button>
+      <button class="rtab" onclick="switchRankTab('7d',this)">7日平均</button>
+      <button class="rtab" onclick="switchRankTab('30d',this)">30日平均</button>
+    </div>
+
+    <div class="game-list" id="game-list"></div>
+    <div class="no-result" id="no-result" style="display:none">該当するゲームがありません</div>
+  </div>
+
+  <!-- DETAIL VIEW -->
+  <div id="detail-view">
+    <div class="share-row">
+      <button class="btn-back" onclick="goHome()">← 一覧に戻る</button>
+      <button class="btn-share" onclick="copyUrl()">🔗 URL をコピー</button>
+    </div>
+
+    <div class="detail-hero">
+      <div class="dh-header">
+        <div class="dh-cat-badge" id="dh-icon">🎮</div>
+        <div class="dh-title-wrap">
+          <div class="dh-name" id="dh-name">—</div>
+          <div class="dh-meta">
+            <span class="dh-badge dh-cat-tag" id="dh-cat">—</span>
+            <span class="dh-id" id="dh-id">—</span>
+          </div>
+        </div>
+      </div>
+      <div class="dh-desc" id="dh-desc">—</div>
+      <div class="dh-stats">
+        <div class="dh-stat"><div class="dh-stat-val c1" id="ds-ccu">—</div><div class="dh-stat-lbl">現在のCCU</div></div>
+        <div class="dh-stat"><div class="dh-stat-val green" id="ds-peak">—</div><div class="dh-stat-lbl">最大CCU</div></div>
+        <div class="dh-stat"><div class="dh-stat-val orange" id="ds-avg">—</div><div class="dh-stat-lbl">平均CCU</div></div>
+        <div class="dh-stat"><div class="dh-stat-val purple" id="ds-fav">—</div><div class="dh-stat-lbl">お気に入り</div></div>
+      </div>
+    </div>
+
+    <div class="chart-card">
+      <div class="chart-ttl"><span class="cdot" style="background:var(--c1)"></span>同時接続数 (CCU) の推移</div>
+      <div style="height:200px"><canvas id="ch-ccu"></canvas></div>
+    </div>
+
+    <div class="chart-card">
+      <div class="chart-ttl"><span class="cdot" style="background:var(--yellow)"></span>ランキング順位の推移</div>
+      <div style="height:170px"><canvas id="ch-rank"></canvas></div>
+    </div>
+
+    <div class="chart-card" id="detail-stats-card">
+      <div class="chart-ttl"><span class="cdot" style="background:var(--c2)"></span>期間別 平均CCU</div>
+      <div style="height:140px"><canvas id="ch-period-avg"></canvas></div>
+    </div>
+
+    <div id="not-found">
+      <h2>⚠ ゲームが見つかりません</h2>
+      <p id="nf-msg">指定されたIDのゲームがデータに含まれていません。</p>
+      <button class="btn-retry" onclick="goHome()">一覧に戻る</button>
+    </div>
+  </div>
+</main>
+
+<div class="toast" id="toast"></div>
+
+<footer>
+  GAMESTAT — カスタムゲーム　·　
+  <a href="index.html">メインダッシュボード</a>
+</footer>
+
+<script>
+/* ════════════════════════════
+   設定
+════════════════════════════ */
+const CONFIG = {
+  url: 'https://raw.githubusercontent.com/bulebrainbrand/bloxd-info/refs/heads/main/custom_game_data.json',
+};
+const DAY_MS  = 86400000;
+const WEEK_MS = 7  * DAY_MS;
+const MON_MS  = 30 * DAY_MS;
+const MAX_PTS = 300;
+
+/* カテゴリ絵文字 */
+const CAT_ICON = {
+  Minigames:'🎯', Simulator:'⚙️', Parkour:'🏃', Arena:'⚔️',
+  Survival:'🌲', Duels:'🥊', Puzzle:'🧩', Obby:'🏗️',
+  Racing:'🏎️', Roleplay:'🎭', Shooting:'🔫', Tower:'🏰',
+  'Lucky Block':'🍀', Other:'🎮',
+};
+
+/* ── state ── */
+let snapshots = [];       // [{at, data:{results:[...]}}]
+let rankTab   = 'now';
+let selCat    = 'all';
+let charts    = {};
+let _gameMap  = null;     // buildGameMap のキャッシュ
+
+const $id = id => document.getElementById(id);
+const fmtN = v => (v||0).toLocaleString('ja-JP');
+const h2   = n => String(n).padStart(2,'0');
+
+function fmtSpan(ms){
+  if(ms < 3600000)    return `${Math.round(ms/60000)}分`;
+  if(ms < DAY_MS)     return `${(ms/3600000).toFixed(1)}時間`;
+  if(ms < DAY_MS*30)  return `${Math.round(ms/DAY_MS)}日`;
+  return `${(ms/DAY_MS/30).toFixed(1)}ヶ月`;
+}
+
+function setStatus(s,t){ $id('s-dot').className='s-dot '+s; $id('s-txt').textContent=t; }
+function showToast(m){ const t=$id('toast');t.textContent=m;t.classList.add('show');setTimeout(()=>t.classList.remove('show'),2200); }
+
+/* ── screens ── */
+function showScreen(name){
+  ['loading-screen','error-screen','home-view','detail-view']
+    .forEach(id=>$id(id).style.display='none');
+  if(name==='loading') $id('loading-screen').style.display='flex';
+  else if(name==='error') $id('error-screen').style.display='flex';
+  else if(name==='home')  $id('home-view').style.display='block';
+  else if(name==='detail'){
+    $id('detail-view').style.display='block';
+    $id('not-found').style.display='none';
+    $id('detail-view').querySelectorAll('.chart-card,.detail-hero,.share-row')
+      .forEach(el=>el.style.display='');
+  }
+}
+
+/* ── fetch ── */
+async function fetchAndRender(){
+  setStatus('loading','取得中...');
+  showScreen('loading');
+  $id('load-msg').textContent = 'データを取得中...';
+  try {
+    const res = await fetch(CONFIG.url, {cache:'no-store'});
+    if(!res.ok) throw new Error(`HTTP ${res.status}`);
+    const raw = await res.json();
+    snapshots = Array.isArray(raw) ? raw : [raw];
+    snapshots.sort((a,b)=>new Date(a.at)-new Date(b.at));
+    _gameMap = null;  // キャッシュをクリア
+    setStatus('live','ライブ');
+    // 最終取得時刻を表示
+    const last = snapshots[snapshots.length-1];
+    const lastTs = $id('last-ts');
+    const d = new Date(last.at);
+    const tsFmt = `${d.getMonth()+1}/${d.getDate()} ${h2(d.getHours())}:${h2(d.getMinutes())} 取得`;
+    lastTs.textContent = tsFmt;
+    lastTs.style.display = 'block';
+    // カテゴリボタンはデータ取得後に1度だけ構築
+    buildCatButtons();
+    updateInfoBar();
+    route();
+  } catch(e){
+    console.error(e);
+    setStatus('error','エラー');
+    showScreen('error');
+    $id('err-msg').innerHTML = `取得に失敗しました。<br><code style="font-family:monospace;font-size:10px">${CONFIG.url}</code><br>${e.message}`;
+  }
+}
+
+/* ── routing ── */
+function route(){
+  const params = new URLSearchParams(location.search);
+  const id = params.get('id');
+  if(id){ renderDetail(id); }
+  else   { renderHome(); }
+}
+
+function goHome(){
+  history.pushState({},'','customGame.html');
+  renderHome();
+}
+
+function goDetail(id){
+  history.pushState({},'',`customGame.html?id=${encodeURIComponent(id)}`);
+  renderDetail(id);
+}
+
+window.addEventListener('popstate', route);
+
+/* ══════════════════════════════════
+   HOME
+══════════════════════════════════ */
+function renderHome(){
+  showScreen('home');
+  // info-bar は常に最新状態を表示（buildCatButtons はデータロード時のみ）
+  updateInfoBar();
+  applyFilters();
+}
+
+/* ── aggregate per game across all snapshots ── */
+function buildGameMap(){
+  if(_gameMap) return _gameMap;  // キャッシュ済みなら再利用
+  const map = new Map();
+  snapshots.forEach(snap=>{
+    const ts = new Date(snap.at).getTime();
+    const results = snap.data?.results || [];
+    results.forEach((g, idx)=>{
+      if(!map.has(g.schematicId)){
+        map.set(g.schematicId, {
+          schematicId: g.schematicId,
+          name: g.name,
+          description: g.description,
+          gameCategory: g.gameCategory,
+          gamePublished: g.gamePublished,
+          entries: [],
+        });
+      }
+      map.get(g.schematicId).entries.push({
+        at: ts, ccu: g.ccu, rank: idx+1, favourites: g.favourites,
+      });
+    });
+  });
+  _gameMap = map;
+  return map;
+}
+
+function avgCCU(entries, windowMs){
+  if(!windowMs) return entries.length ? entries.at(-1).ccu : 0;
+  const now = Date.now();
+  const fil = entries.filter(e=>now-e.at<=windowMs);
+  if(!fil.length) return null; // データなし
+  return Math.round(fil.reduce((s,e)=>s+e.ccu,0)/fil.length);
+}
+
+function updateInfoBar(){
+  if(!snapshots.length) return;
+  const bar=$id('info-bar'); bar.style.display='flex';
+  const first=snapshots[0], last=snapshots[snapshots.length-1];
+  const spanMs = new Date(last.at)-new Date(first.at);
+  $id('inf-snaps').textContent = fmtN(snapshots.length);
+  $id('inf-span').textContent  = spanMs>0?fmtSpan(spanMs):'1スナップショット';
+  const allIds = new Set(snapshots.flatMap(s=>(s.data?.results||[]).map(g=>g.schematicId)));
+  $id('inf-games').textContent = fmtN(allIds.size);
+}
+
+function buildCatButtons(){
+  // データ読み込み後に1度だけ呼ぶ。selCat をリセットして UI と状態を同期
+  selCat = 'all';
+  const cats = new Set();
+  snapshots.forEach(s=>(s.data?.results||[]).forEach(g=>cats.add(g.gameCategory)));
+  const row = $id('cat-row');
+  row.innerHTML = '';
+  const all = document.createElement('button');
+  all.className='cat-btn on'; all.textContent='すべて';
+  all.onclick=()=>setCat('all',all);
+  row.appendChild(all);
+  [...cats].sort().forEach(c=>{
+    const b=document.createElement('button');
+    b.className='cat-btn';
+    b.textContent=`${CAT_ICON[c]||'🎮'} ${c}`;
+    b.onclick=()=>setCat(c,b);
+    row.appendChild(b);
+  });
+}
+
+function setCat(c,btn){
+  selCat=c;
+  document.querySelectorAll('.cat-btn').forEach(b=>b.classList.remove('on'));
+  btn.classList.add('on');
+  applyFilters();
+}
+
+function switchRankTab(tab,btn){
+  rankTab=tab;
+  document.querySelectorAll('.rtab').forEach(b=>b.classList.remove('on'));
+  btn.classList.add('on');
+  applyFilters();
+}
+
+function clearSearch(){
+  $id('search-input').value='';
+  applyFilters();
+}
+
+function applyFilters(){
+  const q = $id('search-input').value.trim().toLowerCase();
+  const gameMap = buildGameMap();
+  const windowMs = rankTab==='7d'?WEEK_MS:rankTab==='30d'?MON_MS:0;
+  const isNow = rankTab==='now';
+
+  // Build sorted list
+  let entries = [...gameMap.values()]
+    .map(g=>{
+      const latest = g.entries.at(-1);
+      const favLatest = g.entries.length ? g.entries.at(-1).favourites : 0;
+      const avg = isNow ? latest?.ccu||0 : avgCCU(g.entries, windowMs);
+      return {...g, latestCCU: latest?.ccu||0, favourites: favLatest, sortVal: avg??-1, avg};
+    })
+    .filter(g=>g.sortVal>=0)
+    .sort((a,b)=>b.sortVal-a.sortVal);
+
+  // Category filter
+  if(selCat!=='all') entries=entries.filter(g=>g.gameCategory===selCat);
+
+  // Search filter
+  if(q) entries=entries.filter(g=>g.name.toLowerCase().includes(q));
+
+  const list=$id('game-list');
+  list.innerHTML='';
+  $id('no-result').style.display=entries.length?'none':'block';
+
+  entries.forEach((g,i)=>{
+    const card=document.createElement('div');
+    card.className='game-card';
+    card.onclick=()=>goDetail(g.schematicId);
+
+    const rankClass = i===0?'gc-rank-1':i===1?'gc-rank-2':i===2?'gc-rank-3':'gc-rank-n';
+    const icon = CAT_ICON[g.gameCategory]||'🎮';
+    const valDisplay = isNow
+      ? `<div class="gc-ccu">${fmtN(g.latestCCU)}</div><div class="gc-ccu-lbl">プレイヤー</div>`
+      : `<div class="gc-avg">${g.avg!==null?fmtN(g.avg):'—'}</div><div class="gc-ccu-lbl">平均CCU</div>`;
+
+    card.innerHTML=`
+      <div class="game-card-rank ${rankClass}">${i+1}</div>
+      <div class="game-card-body">
+        <div class="gc-name">${escHtml(g.name)}<span class="gc-cat">${icon} ${escHtml(g.gameCategory)}</span></div>
+        <div class="gc-desc">${g.description?escHtml(g.description):'説明なし'}</div>
+      </div>
+      <div class="game-card-stats">
+        ${valDisplay}
+        <div class="gc-fav">⭐ ${fmtN(g.favourites)}</div>
+      </div>`;
+    list.appendChild(card);
+  });
+}
+
+/* ══════════════════════════════════
+   DETAIL
+══════════════════════════════════ */
+function renderDetail(id){
+  showScreen('detail');
+
+  // Collect all entries for this game
+  const entries = [];
+  let info = null;
+  snapshots.forEach(snap=>{
+    const ts = new Date(snap.at).getTime();
+    const results = snap.data?.results||[];
+    const idx = results.findIndex(g=>g.schematicId===id);
+    if(idx>=0){
+      const g=results[idx];
+      if(!info) info=g;
+      entries.push({at:ts, ccu:g.ccu, rank:idx+1, favourites:g.favourites});
+    }
+  });
+
+  if(!info){
+    // Not found in any snapshot
+    $id('detail-view').querySelectorAll('.chart-card,.detail-hero,.share-row')
+      .forEach(el=>el.style.display='none');
+    $id('not-found').style.display='flex';
+    $id('nf-msg').textContent=`ID: ${id} はデータに含まれていません。`;
+    return;
+  }
+
+  // Stat summary
+  const now  = Date.now();
+  const peak = Math.max(...entries.map(e=>e.ccu));
+  const avg  = Math.round(entries.reduce((s,e)=>s+e.ccu,0)/entries.length);
+  const latestEntry = entries.at(-1);
+
+  // Hero
+  const icon = CAT_ICON[info.gameCategory]||'🎮';
+  $id('dh-icon').textContent = icon;
+  $id('dh-name').textContent = info.name;
+  $id('dh-cat').textContent  = `${icon} ${info.gameCategory}`;
+  $id('dh-id').textContent   = id;
+  $id('dh-desc').textContent = info.description || '（説明なし）';
+  $id('ds-ccu').textContent  = fmtN(latestEntry.ccu);
+  $id('ds-peak').textContent = fmtN(peak);
+  $id('ds-avg').textContent  = fmtN(avg);
+  $id('ds-fav').textContent  = fmtN(latestEntry.favourites);
+
+  // Span
+  const spanMs = entries.length>1 ? entries.at(-1).at-entries[0].at : 0;
+
+  // Charts
+  mkChart('ch-ccu',{type:'line',data:{
+    datasets:[{
+      label:'CCU',
+      fill:true,
+      data: entries.map(e=>({x:e.at, y:e.ccu})),
+      borderColor:'#00d9ff',backgroundColor:'rgba(0,217,255,.08)',
+      tension:.4,
+      pointRadius: entries.length>60?0:3,
+      pointBackgroundColor:'#00d9ff',borderWidth:2,
+    }]
+  },options:{
+    responsive:true,maintainAspectRatio:false,
+    plugins:{legend:{display:false},tooltip:{callbacks:{label:c=>`${fmtN(c.parsed.y)}人`}}},
+    scales: timeScaleOpts(spanMs),
+  }});
+
+  // Rank trend (lower=better, invert Y)
+  mkChart('ch-rank',{type:'line',data:{
+    datasets:[{
+      label:'順位',
+      fill:false,
+      data: entries.map(e=>({x:e.at, y:e.rank})),
+      borderColor:'#ffd600',backgroundColor:'rgba(255,214,0,.08)',
+      tension:.4,
+      pointRadius: entries.length>60?0:3,
+      pointBackgroundColor:'#ffd600',borderWidth:2,
+    }]
+  },options:{
+    responsive:true,maintainAspectRatio:false,
+    plugins:{legend:{display:false},tooltip:{callbacks:{label:c=>`${c.parsed.y}位`}}},
+    scales:{
+      ...timeScaleOpts(spanMs),
+      y:{
+        reverse:true,
+        ticks:{color:'#3d5470',font:{family:'JetBrains Mono',size:8},callback:v=>`${v}位`},
+        grid:{color:'rgba(26,46,74,.35)'},
+      }
+    }
+  }});
+
+  // Period avg bar
+  const periods=[
+    {label:'全期間',  ms:0},
+    {label:'30日',    ms:MON_MS},
+    {label:'7日',     ms:WEEK_MS},
+    {label:'24時間',  ms:DAY_MS},
+  ];
+  const avgData = periods.map(p=>{
+    if(!p.ms) return Math.round(entries.reduce((s,e)=>s+e.ccu,0)/entries.length);
+    const fil=entries.filter(e=>now-e.at<=p.ms);
+    return fil.length?Math.round(fil.reduce((s,e)=>s+e.ccu,0)/fil.length):null;
+  });
+  mkChart('ch-period-avg',{type:'bar',data:{
+    labels:periods.map(p=>p.label),
+    datasets:[{
+      label:'平均CCU',
+      data:avgData,
+      backgroundColor:['rgba(0,217,255,.7)','rgba(0,230,118,.6)','rgba(255,152,0,.6)','rgba(255,95,46,.6)'],
+      borderColor:    ['#00d9ff','#00e676','#ff9800','#ff5f2e'],
+      borderWidth:1,borderRadius:5,
+    }]
+  },options:{
+    responsive:true,maintainAspectRatio:false,
+    indexAxis:'y',
+    plugins:{
+      legend:{display:false},
+      tooltip:{callbacks:{label:c=>c.raw!==null?`${fmtN(c.raw)}人`:'データなし'}}
+    },
+    scales:{
+      x:{ticks:{color:'#3d5470',font:{family:'JetBrains Mono',size:8},callback:v=>v>=1000?`${(v/1000).toFixed(1)}k`:v},grid:{color:'rgba(26,46,74,.35)'}},
+      y:{ticks:{color:'#7a95ba',font:{family:'Noto Sans JP',size:10}},grid:{color:'rgba(26,46,74,.35)'}}
+    }
+  }});
+}
+
+/* ── chart helpers ── */
+function mkChart(id,cfg){
+  if(charts[id]){charts[id].destroy();delete charts[id];}
+  const el=$id(id);if(!el)return;
+  charts[id]=new Chart(el.getContext('2d'),cfg);
+}
+
+function timeScaleOpts(spanMs){
+  let unit,stepSize;
+  if     (spanMs>=DAY_MS*90) {unit='week'; stepSize=1;}
+  else if(spanMs>=DAY_MS*14) {unit='day';  stepSize=1;}
+  else if(spanMs>=DAY_MS*3)  {unit='day';  stepSize=1;}
+  else if(spanMs>=DAY_MS)    {unit='hour'; stepSize=6;}
+  else if(spanMs>=3600000*6) {unit='hour'; stepSize=1;}
+  else if(spanMs>=3600000*2) {unit='minute';stepSize=30;}
+  else                       {unit='minute';stepSize=5;}
+  return {
+    x:{
+      type:'time',
+      time:{unit,stepSize,displayFormats:{minute:'HH:mm',hour:'M/d HH:mm',day:'M/d',week:'M/d',month:'yyyy/M'},tooltipFormat:'yyyy/MM/dd HH:mm'},
+      ticks:{color:'#3d5470',font:{family:'JetBrains Mono',size:8},maxTicksLimit:8,maxRotation:0},
+      grid:{color:'rgba(26,46,74,.35)'},
+    },
+    y:{
+      ticks:{color:'#3d5470',font:{family:'JetBrains Mono',size:8},callback:v=>v>=1000?`${(v/1000).toFixed(1)}k`:v},
+      grid:{color:'rgba(26,46,74,.35)'},
+    }
+  };
+}
+
+/* ── misc ── */
+function copyUrl(){
+  navigator.clipboard.writeText(location.href).then(()=>showToast('URLをコピーしました！'));
+}
+
+function escHtml(s){
+  return String(s).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;');
+}
+
+/* ── boot ── */
+fetchAndRender();
+</script>
+</body>
+</html>
