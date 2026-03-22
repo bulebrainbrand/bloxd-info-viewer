@@ -1,0 +1,2734 @@
+<!doctype html>
+<html lang="ja">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>GameStat Dashboard</title>
+    <link rel="preconnect" href="https://fonts.googleapis.com" />
+    <link
+      href="https://fonts.googleapis.com/css2?family=Noto+Sans+JP:wght@300;400;500;700;900&family=Orbitron:wght@700;900&family=JetBrains+Mono:wght@400;600;700&display=swap"
+      rel="stylesheet"
+    />
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/Chart.js/4.4.1/chart.umd.min.js"></script>
+    <style>
+      :root {
+        --bg: #050c18;
+        --bg3: #0b1428;
+        --surf: #0f1b2d;
+        --surf2: #152135;
+        --surf3: #1b2b42;
+        --bdr: #1a2e4a;
+        --bdr2: #254270;
+        --bdr3: #2e5490;
+        --c1: #00d9ff;
+        --c2: #ff5f2e;
+        --c3: #7c3aed;
+        --green: #00e676;
+        --red: #ff3d5a;
+        --yellow: #ffd600;
+        --orange: #ff9800;
+        --txt: #dde6f5;
+        --txt2: #7a95ba;
+        --txt3: #3d5470;
+        --glow1: rgba(0, 217, 255, 0.2);
+        --fd: "Orbitron", monospace;
+        --fm: "JetBrains Mono", monospace;
+        --fb: "Noto Sans JP", sans-serif;
+      }
+      *,
+      *::before,
+      *::after {
+        box-sizing: border-box;
+        margin: 0;
+        padding: 0;
+      }
+      html {
+        scroll-behavior: smooth;
+      }
+      body {
+        font-family: var(--fb);
+        background: var(--bg);
+        color: var(--txt);
+        min-height: 100vh;
+        overflow-x: hidden;
+        background-image:
+          radial-gradient(
+            ellipse 70% 50% at 50% 0%,
+            rgba(0, 217, 255, 0.05) 0%,
+            transparent 55%
+          ),
+          radial-gradient(
+            ellipse 40% 40% at 95% 85%,
+            rgba(124, 58, 237, 0.04) 0%,
+            transparent 50%
+          ),
+          url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='256' height='256'%3E%3Cfilter id='n'%3E%3CfeTurbulence baseFrequency='.85' numOctaves='4' stitchTiles='stitch'/%3E%3C/filter%3E%3Crect width='100%25' height='100%25' filter='url(%23n)' opacity='.02'/%3E%3C/svg%3E");
+      }
+      /* NAV */
+      #nav {
+        position: fixed;
+        top: 0;
+        left: 0;
+        right: 0;
+        z-index: 200;
+        height: 52px;
+        display: flex;
+        align-items: center;
+        padding: 0 16px;
+        background: rgba(5, 12, 24, 0.9);
+        backdrop-filter: blur(20px);
+        border-bottom: 1px solid var(--bdr);
+      }
+      .nav-logo {
+        font-family: var(--fd);
+        font-size: 11px;
+        font-weight: 900;
+        color: var(--c1);
+        letter-spacing: 3px;
+        text-shadow: 0 0 14px var(--c1);
+        margin-right: auto;
+        white-space: nowrap;
+      }
+      .nav-logo span {
+        color: var(--txt3);
+      }
+      .nav-links {
+        display: flex;
+        gap: 1px;
+        flex-wrap: wrap;
+      }
+      .nav-links a {
+        color: var(--txt2);
+        text-decoration: none;
+        font-size: 10px;
+        font-weight: 500;
+        padding: 5px 10px;
+        border-radius: 5px;
+        transition: all 0.2s;
+        white-space: nowrap;
+      }
+      .nav-links a:hover {
+        color: var(--c1);
+        background: rgba(0, 217, 255, 0.07);
+      }
+      #s-badge {
+        display: flex;
+        align-items: center;
+        gap: 5px;
+        font-family: var(--fm);
+        font-size: 9px;
+        color: var(--txt3);
+        background: var(--surf);
+        border: 1px solid var(--bdr);
+        border-radius: 4px;
+        padding: 3px 9px;
+        margin-left: 8px;
+        white-space: nowrap;
+        flex-shrink: 0;
+      }
+      .s-dot {
+        width: 5px;
+        height: 5px;
+        border-radius: 50%;
+        flex-shrink: 0;
+        background: var(--txt3);
+      }
+      .s-dot.live {
+        background: var(--green);
+        box-shadow: 0 0 6px var(--green);
+        animation: pulse 2s infinite;
+      }
+      .s-dot.error {
+        background: var(--red);
+      }
+      .s-dot.loading {
+        background: var(--yellow);
+        animation: pulse 0.8s infinite;
+      }
+      @keyframes pulse {
+        0%,
+        100% {
+          opacity: 1;
+        }
+        50% {
+          opacity: 0.35;
+        }
+      }
+      .btn-reload {
+        background: none;
+        border: 1px solid var(--bdr);
+        border-radius: 5px;
+        color: var(--txt2);
+        cursor: pointer;
+        padding: 4px 9px;
+        font-size: 11px;
+        margin-left: 6px;
+        transition: all 0.2s;
+        flex-shrink: 0;
+      }
+      .btn-reload:hover {
+        color: var(--c1);
+        border-color: var(--c1);
+      }
+      /* LAYOUT */
+      main {
+        max-width: 900px;
+        margin: 0 auto;
+        padding: 68px 14px 64px;
+        position: relative;
+        z-index: 1;
+      }
+      /* SCREENS */
+      #loading-screen {
+        display: flex;
+        flex-direction: column;
+        align-items: center;
+        justify-content: center;
+        min-height: 60vh;
+        gap: 18px;
+      }
+      .spinner {
+        width: 38px;
+        height: 38px;
+        border: 2px solid var(--bdr2);
+        border-top-color: var(--c1);
+        border-radius: 50%;
+        animation: spin 0.8s linear infinite;
+      }
+      @keyframes spin {
+        to {
+          transform: rotate(360deg);
+        }
+      }
+      .load-txt {
+        font-size: 11px;
+        color: var(--txt3);
+        letter-spacing: 1px;
+        font-family: var(--fm);
+      }
+      #error-screen {
+        display: none;
+        flex-direction: column;
+        align-items: center;
+        justify-content: center;
+        min-height: 60vh;
+        gap: 14px;
+        text-align: center;
+        padding: 20px;
+      }
+      #error-screen h2 {
+        font-family: var(--fd);
+        font-size: 15px;
+        color: var(--red);
+        letter-spacing: 1px;
+      }
+      #error-screen p {
+        font-size: 11px;
+        color: var(--txt2);
+        max-width: 400px;
+        line-height: 1.9;
+      }
+      #error-screen code {
+        font-family: var(--fm);
+        font-size: 10px;
+        color: var(--txt3);
+        background: var(--surf);
+        padding: 1px 5px;
+        border-radius: 3px;
+      }
+      .btn-retry {
+        font-size: 11px;
+        font-weight: 700;
+        padding: 8px 22px;
+        border-radius: 6px;
+        border: none;
+        cursor: pointer;
+        background: var(--c1);
+        color: #000;
+        transition: all 0.2s;
+      }
+      .btn-retry:hover {
+        box-shadow: 0 0 14px var(--glow1);
+      }
+      #dashboard {
+        display: none;
+      }
+      /* SECTION */
+      .anchor {
+        display: block;
+        height: 66px;
+        margin-top: -66px;
+        visibility: hidden;
+      }
+      .sec-hd {
+        display: flex;
+        align-items: center;
+        gap: 10px;
+        margin: 48px 0 20px;
+      }
+      .sec-tag {
+        font-family: var(--fm);
+        font-size: 9px;
+        font-weight: 700;
+        color: var(--c1);
+        background: rgba(0, 217, 255, 0.1);
+        border: 1px solid rgba(0, 217, 255, 0.2);
+        border-radius: 3px;
+        padding: 2px 7px;
+        letter-spacing: 2px;
+        text-transform: uppercase;
+        flex-shrink: 0;
+      }
+      .sec-title {
+        font-family: var(--fd);
+        font-size: 13px;
+        font-weight: 700;
+        color: var(--txt);
+        letter-spacing: 0.8px;
+        white-space: nowrap;
+      }
+      .sec-line {
+        flex: 1;
+        height: 1px;
+        background: linear-gradient(to right, var(--bdr2), transparent);
+      }
+      /* HERO */
+      .hero-box {
+        text-align: center;
+        padding: 36px 20px 28px;
+        background: var(--surf);
+        border: 1px solid var(--bdr);
+        border-radius: 14px;
+        position: relative;
+        overflow: hidden;
+        margin-bottom: 10px;
+      }
+      .hero-box::before {
+        content: "";
+        position: absolute;
+        top: 0;
+        left: 50%;
+        transform: translateX(-50%);
+        width: 50%;
+        height: 1px;
+        background: linear-gradient(
+          to right,
+          transparent,
+          var(--c1),
+          transparent
+        );
+      }
+      .hero-box::after {
+        content: "";
+        position: absolute;
+        inset: 0;
+        background: radial-gradient(
+          ellipse 55% 55% at 50% 0%,
+          rgba(0, 217, 255, 0.05),
+          transparent
+        );
+        pointer-events: none;
+      }
+      .hero-lbl {
+        font-size: 9px;
+        color: var(--txt3);
+        letter-spacing: 3px;
+        text-transform: uppercase;
+        margin-bottom: 8px;
+      }
+      .hero-num {
+        font-family: var(--fd);
+        font-size: clamp(48px, 10vw, 82px);
+        font-weight: 900;
+        color: var(--c1);
+        line-height: 1;
+        letter-spacing: 2px;
+        text-shadow:
+          0 0 40px rgba(0, 217, 255, 0.4),
+          0 0 80px rgba(0, 217, 255, 0.12);
+      }
+      .hero-sub {
+        font-size: 10px;
+        color: var(--txt2);
+        margin-top: 10px;
+        line-height: 2.2;
+      }
+      .hero-sub strong {
+        color: var(--green);
+        font-weight: 700;
+      }
+      /* KPI */
+      .kpi-grid {
+        display: grid;
+        grid-template-columns: repeat(3, 1fr);
+        gap: 9px;
+        margin-bottom: 10px;
+      }
+      @media (max-width: 520px) {
+        .kpi-grid {
+          grid-template-columns: 1fr 1fr;
+        }
+      }
+      .kpi {
+        background: var(--surf);
+        border: 1px solid var(--bdr);
+        border-radius: 10px;
+        padding: 14px 13px;
+        transition:
+          border-color 0.2s,
+          transform 0.2s;
+        position: relative;
+        overflow: hidden;
+      }
+      .kpi:hover {
+        border-color: var(--bdr2);
+        transform: translateY(-2px);
+      }
+      .kpi::after {
+        content: "";
+        position: absolute;
+        inset: 0;
+        background: linear-gradient(
+          135deg,
+          rgba(0, 217, 255, 0.025),
+          transparent 55%
+        );
+        pointer-events: none;
+      }
+      .kpi-lbl {
+        font-size: 8.5px;
+        color: var(--txt3);
+        letter-spacing: 1.5px;
+        text-transform: uppercase;
+        margin-bottom: 6px;
+        font-weight: 500;
+      }
+      .kpi-val {
+        font-family: var(--fm);
+        font-size: 21px;
+        font-weight: 700;
+        line-height: 1.1;
+      }
+      .kpi-unit {
+        font-size: 10px;
+        color: var(--txt2);
+        margin-top: 3px;
+        font-family: var(--fb);
+      }
+      .c1 {
+        color: var(--c1);
+      }
+      .c2 {
+        color: var(--c2);
+      }
+      .cg {
+        color: var(--green);
+      }
+      .cp {
+        color: #a78bfa;
+      }
+      .co {
+        color: var(--orange);
+      }
+      /* TOP5 */
+      .top5-list {
+        display: flex;
+        flex-direction: column;
+        gap: 6px;
+        margin-bottom: 10px;
+      }
+      .top5-item {
+        display: flex;
+        align-items: center;
+        gap: 11px;
+        background: var(--surf);
+        border: 1px solid var(--bdr);
+        border-radius: 9px;
+        padding: 12px 14px;
+        transition: border-color 0.2s;
+      }
+      .top5-item:hover {
+        border-color: var(--bdr2);
+      }
+      .t5-rank {
+        font-family: var(--fd);
+        font-size: 16px;
+        font-weight: 900;
+        width: 30px;
+        text-align: center;
+        flex-shrink: 0;
+      }
+      .r1 {
+        color: var(--yellow);
+        text-shadow: 0 0 10px rgba(255, 214, 0, 0.5);
+      }
+      .r2 {
+        color: #c0c8d8;
+      }
+      .r3 {
+        color: #c97b3a;
+      }
+      .rx {
+        color: var(--txt3);
+        font-size: 12px;
+      }
+      .t5-info {
+        flex: 1;
+        min-width: 0;
+      }
+      .t5-name {
+        font-size: 13px;
+        font-weight: 700;
+      }
+      .t5-cat {
+        font-size: 9px;
+        color: var(--txt3);
+        margin-top: 2px;
+      }
+      .t5-bwrap {
+        width: 110px;
+        flex-shrink: 0;
+      }
+      @media (max-width: 450px) {
+        .t5-bwrap {
+          width: 70px;
+        }
+      }
+      .t5-bg {
+        height: 3px;
+        background: var(--surf3);
+        border-radius: 2px;
+        margin-bottom: 4px;
+      }
+      .t5-fill {
+        height: 100%;
+        border-radius: 2px;
+        background: linear-gradient(to right, var(--c2), var(--c1));
+      }
+      .t5-cnt {
+        font-family: var(--fm);
+        font-size: 12px;
+        font-weight: 700;
+        color: var(--c1);
+        text-align: right;
+      }
+      /* RANKING */
+      .filter-row {
+        display: flex;
+        gap: 5px;
+        flex-wrap: wrap;
+        margin-bottom: 12px;
+      }
+      .fbtn {
+        font-size: 10px;
+        font-weight: 500;
+        padding: 4px 11px;
+        border-radius: 18px;
+        border: 1px solid var(--bdr);
+        background: transparent;
+        color: var(--txt2);
+        cursor: pointer;
+        transition: all 0.2s;
+        white-space: nowrap;
+      }
+      .fbtn:hover,
+      .fbtn.on {
+        background: rgba(0, 217, 255, 0.09);
+        border-color: var(--c1);
+        color: var(--c1);
+      }
+      .table-wrap {
+        background: var(--surf);
+        border: 1px solid var(--bdr);
+        border-radius: 12px;
+        overflow: hidden;
+        margin-bottom: 12px;
+      }
+      table {
+        width: 100%;
+        border-collapse: collapse;
+      }
+      thead th {
+        font-size: 8.5px;
+        font-weight: 700;
+        color: var(--txt3);
+        letter-spacing: 1.5px;
+        text-transform: uppercase;
+        padding: 10px 13px;
+        background: var(--bg3);
+        border-bottom: 1px solid var(--bdr);
+        text-align: left;
+      }
+      thead th.r {
+        text-align: right;
+      }
+      tbody tr {
+        border-bottom: 1px solid rgba(26, 46, 74, 0.5);
+        transition: background 0.15s;
+      }
+      tbody tr:last-child {
+        border-bottom: none;
+      }
+      tbody tr:hover {
+        background: rgba(0, 217, 255, 0.03);
+      }
+      tbody tr.hide {
+        display: none;
+      }
+      tbody tr.is-sub td:first-child::before {
+        content: "└ ";
+        color: var(--txt3);
+        font-size: 10px;
+      }
+      tbody tr.is-sub .td-nm {
+        color: var(--txt2);
+        font-weight: 400;
+        padding-left: 4px;
+      }
+      tbody tr.is-sub .td-n {
+        color: var(--txt2);
+      }
+      td {
+        padding: 9px 13px;
+        font-size: 12px;
+        vertical-align: middle;
+      }
+      td.r {
+        text-align: right;
+      }
+      .td-rk {
+        font-family: var(--fm);
+        font-size: 10px;
+        color: var(--txt3);
+        width: 36px;
+      }
+      .td-nm {
+        font-weight: 500;
+      }
+      .td-cat {
+        font-size: 9px;
+        display: inline-block;
+        padding: 1px 5px;
+        border-radius: 3px;
+        background: var(--surf3);
+        color: var(--txt2);
+        margin-left: 4px;
+        vertical-align: middle;
+      }
+      .td-n {
+        font-family: var(--fm);
+        font-weight: 700;
+        color: var(--c1);
+      }
+      .td-d {
+        font-family: var(--fm);
+        font-size: 11px;
+      }
+      .up {
+        color: var(--green);
+      }
+      .dn {
+        color: var(--red);
+      }
+      .fl {
+        color: var(--txt3);
+      }
+      /* CHARTS */
+      .chart-card {
+        background: var(--surf);
+        border: 1px solid var(--bdr);
+        border-radius: 12px;
+        padding: 16px 14px;
+        margin-bottom: 10px;
+      }
+      .chart-ttl {
+        font-size: 11px;
+        font-weight: 700;
+        color: var(--txt2);
+        margin-bottom: 12px;
+        display: flex;
+        align-items: center;
+        gap: 7px;
+      }
+      .cdot {
+        width: 6px;
+        height: 6px;
+        border-radius: 50%;
+        flex-shrink: 0;
+      }
+      /* SPARKLINES */
+      .spark-card {
+        background: var(--surf);
+        border: 1px solid var(--bdr);
+        border-radius: 12px;
+        overflow: hidden;
+        margin-bottom: 10px;
+      }
+      .spark-row {
+        display: grid;
+        grid-template-columns: 1fr 120px 70px;
+        align-items: center;
+        gap: 10px;
+        padding: 8px 13px;
+        border-bottom: 1px solid rgba(26, 46, 74, 0.4);
+        transition: background 0.15s;
+      }
+      @media (max-width: 460px) {
+        .spark-row {
+          grid-template-columns: 1fr 76px 58px;
+          gap: 7px;
+        }
+      }
+      .spark-row:last-child {
+        border-bottom: none;
+      }
+      .spark-row {
+        cursor: pointer;
+      }
+      .spark-row:hover {
+        background: rgba(0, 217, 255, 0.07);
+      }
+      .spark-row:active {
+        background: rgba(0, 217, 255, 0.13);
+      }
+      .sp-name {
+        font-size: 10.5px;
+        font-weight: 600;
+        white-space: nowrap;
+        overflow: hidden;
+        text-overflow: ellipsis;
+        display: flex;
+        align-items: center;
+        gap: 6px;
+      }
+      .sp-arrow {
+        font-size: 9px;
+        color: var(--txt3);
+        opacity: 0;
+        transition:
+          opacity 0.15s,
+          transform 0.15s;
+        flex-shrink: 0;
+      }
+      .spark-row:hover .sp-arrow {
+        opacity: 1;
+        transform: translateX(3px);
+        color: var(--c1);
+      }
+      .sp-cnt {
+        font-family: var(--fm);
+        font-size: 12px;
+        font-weight: 700;
+        color: var(--c1);
+        text-align: right;
+      }
+      /* TABS */
+      .tab-row {
+        display: flex;
+        gap: 4px;
+        margin-bottom: 14px;
+        flex-wrap: wrap;
+      }
+      .tab {
+        font-size: 10px;
+        font-weight: 600;
+        padding: 6px 14px;
+        border-radius: 20px;
+        border: 1px solid var(--bdr);
+        background: transparent;
+        color: var(--txt2);
+        cursor: pointer;
+        transition: all 0.2s;
+      }
+      .tab:hover,
+      .tab.on {
+        background: rgba(0, 217, 255, 0.1);
+        border-color: var(--c1);
+        color: var(--c1);
+      }
+      /* EXPLORER */
+      .explorer-card {
+        background: var(--surf);
+        border: 1px solid var(--bdr);
+        border-radius: 12px;
+        padding: 16px 14px;
+        margin-bottom: 10px;
+      }
+      .explorer-nav {
+        display: flex;
+        align-items: center;
+        gap: 10px;
+        margin-bottom: 14px;
+        flex-wrap: wrap;
+      }
+      .exp-btn {
+        background: var(--surf3);
+        border: 1px solid var(--bdr2);
+        border-radius: 7px;
+        color: var(--txt2);
+        cursor: pointer;
+        width: 34px;
+        height: 34px;
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        font-size: 16px;
+        flex-shrink: 0;
+        transition: all 0.2s;
+        user-select: none;
+      }
+      .exp-btn:hover {
+        color: var(--c1);
+        border-color: var(--c1);
+        background: rgba(0, 217, 255, 0.08);
+      }
+      .exp-btn:disabled {
+        opacity: 0.3;
+        cursor: default;
+      }
+      .exp-mode-info {
+        flex: 1;
+        min-width: 0;
+      }
+      .exp-mode-name {
+        font-size: 14px;
+        font-weight: 700;
+        color: var(--txt);
+        white-space: nowrap;
+        overflow: hidden;
+        text-overflow: ellipsis;
+      }
+      .exp-mode-sub {
+        font-size: 10px;
+        color: var(--txt3);
+        margin-top: 2px;
+        font-family: var(--fm);
+      }
+      .exp-counter {
+        font-family: var(--fm);
+        font-size: 10px;
+        color: var(--txt3);
+        white-space: nowrap;
+        flex-shrink: 0;
+      }
+      .exp-search {
+        background: var(--bg3);
+        border: 1px solid var(--bdr2);
+        border-radius: 7px;
+        color: var(--txt);
+        font-size: 11px;
+        padding: 6px 10px;
+        outline: none;
+        width: 140px;
+        font-family: var(--fb);
+        transition: border-color 0.2s;
+        flex-shrink: 0;
+      }
+      .exp-search:focus {
+        border-color: var(--c1);
+      }
+      .exp-stats {
+        display: flex;
+        gap: 8px;
+        flex-wrap: wrap;
+        margin-bottom: 12px;
+      }
+      .exp-stat {
+        background: var(--surf3);
+        border-radius: 6px;
+        padding: 5px 10px;
+        font-size: 10px;
+        color: var(--txt2);
+      }
+      .exp-stat strong {
+        font-family: var(--fm);
+        color: var(--c1);
+      }
+      .exp-chart-wrap {
+        position: relative;
+      }
+      .exp-anim {
+        animation: fadeslide 0.2s ease;
+      }
+      @keyframes fadeslide {
+        from {
+          opacity: 0;
+          transform: translateX(16px);
+        }
+        to {
+          opacity: 1;
+          transform: translateX(0);
+        }
+      }
+      /* RANKED */
+      .ranked-grid {
+        display: grid;
+        grid-template-columns: 1fr 1fr;
+        gap: 10px;
+        margin-bottom: 10px;
+      }
+      @media (max-width: 520px) {
+        .ranked-grid {
+          grid-template-columns: 1fr;
+        }
+      }
+      /* DATA INFO */
+      .data-info-bar {
+        display: flex;
+        align-items: center;
+        gap: 10px;
+        flex-wrap: wrap;
+        background: var(--surf3);
+        border-radius: 7px;
+        padding: 8px 12px;
+        margin-bottom: 12px;
+        font-size: 10px;
+        color: var(--txt2);
+      }
+      .data-info-bar span {
+        display: flex;
+        align-items: center;
+        gap: 4px;
+      }
+      .data-info-bar strong {
+        font-family: var(--fm);
+        color: var(--c1);
+      }
+      /* WEEKLY */
+      .weekly-note {
+        font-size: 10px;
+        color: var(--txt2);
+        background: var(--surf);
+        border: 1px solid var(--bdr);
+        border-left: 3px solid var(--c3);
+        border-radius: 6px;
+        padding: 10px 14px;
+        margin-bottom: 12px;
+        line-height: 1.9;
+      }
+      .weekly-note code {
+        font-family: var(--fm);
+        font-size: 10px;
+        color: var(--txt3);
+      }
+      .weekly-grid {
+        display: grid;
+        grid-template-columns: 1fr 1fr;
+        gap: 9px;
+        margin-top: 12px;
+      }
+      @media (max-width: 460px) {
+        .weekly-grid {
+          grid-template-columns: 1fr;
+        }
+      }
+      .wk-card {
+        background: var(--surf);
+        border: 1px solid var(--bdr);
+        border-radius: 10px;
+        padding: 13px;
+        display: flex;
+        align-items: center;
+        gap: 11px;
+        transition: border-color 0.2s;
+      }
+      .wk-card:hover {
+        border-color: var(--bdr2);
+      }
+      .wk-icon {
+        width: 38px;
+        height: 38px;
+        border-radius: 8px;
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        font-size: 17px;
+        flex-shrink: 0;
+      }
+      .wk-info {
+        flex: 1;
+        min-width: 0;
+      }
+      .wk-name {
+        font-size: 11px;
+        font-weight: 700;
+        white-space: nowrap;
+        overflow: hidden;
+        text-overflow: ellipsis;
+      }
+      .wk-sub {
+        font-size: 9px;
+        color: var(--txt3);
+        margin-top: 2px;
+      }
+      .wk-diff {
+        font-family: var(--fm);
+        font-size: 13px;
+        font-weight: 700;
+        text-align: right;
+        flex-shrink: 0;
+      }
+      .wk-diff small {
+        display: block;
+        font-size: 9px;
+        font-family: var(--fb);
+        font-weight: 400;
+        color: var(--txt3);
+        margin-top: 1px;
+      }
+      footer {
+        text-align: center;
+        padding: 24px 14px;
+        border-top: 1px solid var(--bdr);
+        margin-top: 56px;
+        font-size: 9px;
+        color: var(--txt3);
+        letter-spacing: 1px;
+        line-height: 2.4;
+      }
+      footer a {
+        color: var(--txt3);
+        text-decoration: none;
+      }
+      footer a:hover {
+        color: var(--c1);
+      }
+    </style>
+  </head>
+  <body>
+    <nav id="nav">
+      <div class="nav-logo">⬡ GAME<span>STAT</span></div>
+      <div class="nav-links">
+        <a href="#overview">概要</a>
+        <a href="#ranking">ランキング</a>
+        <a href="#charts">トレンド</a>
+        <a href="#fullperiod">全期間</a>
+        <a href="#modes">モード詳細</a>
+        <a href="#weekly">先週比</a>
+      </div>
+      <div id="s-badge">
+        <div class="s-dot loading" id="s-dot"></div>
+        <span id="s-txt">接続中...</span>
+      </div>
+      <button class="btn-reload" onclick="fetchData()" title="再取得">↺</button>
+    </nav>
+
+    <main>
+      <div id="loading-screen">
+        <div class="spinner"></div>
+        <p class="load-txt" id="load-msg">
+          エンドポイントからデータを取得中...
+        </p>
+      </div>
+      <div id="error-screen">
+        <h2>⚠ 取得失敗</h2>
+        <p id="err-msg"></p>
+        <button class="btn-retry" onclick="fetchData()">再試行</button>
+      </div>
+
+      <div id="dashboard">
+        <!-- 01 OVERVIEW -->
+        <span class="anchor" id="overview"></span>
+        <div class="sec-hd">
+          <span class="sec-tag">01</span
+          ><span class="sec-title">リアルタイム概要</span>
+          <div class="sec-line"></div>
+        </div>
+        <div class="hero-box">
+          <div class="hero-lbl">現在の総プレイヤー数</div>
+          <div class="hero-num" id="h-total">—</div>
+          <div class="hero-sub">
+            最新スナップショット &nbsp;<strong id="h-ts">—</strong>&nbsp; ｜
+            <span id="h-snaps">—</span> 件 ｜ 期間: <span id="h-span">—</span>
+          </div>
+        </div>
+        <div class="kpi-grid">
+          <div class="kpi">
+            <div class="kpi-lbl">最大モード</div>
+            <div class="kpi-val c2" id="k-topname">—</div>
+            <div class="kpi-unit" id="k-topcnt">—</div>
+          </div>
+          <div class="kpi">
+            <div class="kpi-lbl">カスタムゲーム</div>
+            <div class="kpi-val c1" id="k-custom">—</div>
+            <div class="kpi-unit">人がカスタム中</div>
+          </div>
+          <div class="kpi">
+            <div class="kpi-lbl">ベッドウォーズ合計</div>
+            <div class="kpi-val cp" id="k-bw">—</div>
+            <div class="kpi-unit">人がBW中</div>
+          </div>
+          <div class="kpi">
+            <div class="kpi-lbl">サンドボックス</div>
+            <div class="kpi-val cg" id="k-sandbox">—</div>
+            <div class="kpi-unit">人がワールド/サバイバルで遊び中</div>
+          </div>
+          <div class="kpi">
+            <div class="kpi-lbl">バトル系合計</div>
+            <div class="kpi-val c1" id="k-battle">—</div>
+            <div class="kpi-unit">人がバトル中</div>
+          </div>
+          <div class="kpi">
+            <div class="kpi-lbl">期間中変動</div>
+            <div class="kpi-val" id="k-delta" style="color: var(--txt)">—</div>
+            <div class="kpi-unit" id="k-delta-s">最初 → 最新</div>
+          </div>
+        </div>
+        <div class="top5-list" id="top5"></div>
+
+        <!-- 02 RANKING -->
+        <span class="anchor" id="ranking"></span>
+        <div class="sec-hd">
+          <span class="sec-tag">02</span
+          ><span class="sec-title">プレイヤー数ランキング</span>
+          <div class="sec-line"></div>
+        </div>
+        <div class="filter-row" id="filter-row">
+          <button class="fbtn on" onclick="filterTbl('all', this)">
+            すべて
+          </button>
+          <button class="fbtn" onclick="filterTbl('sandbox', this)">
+            サンドボックス
+          </button>
+          <button class="fbtn" onclick="filterTbl('bedwars', this)">
+            ベッドウォーズ
+          </button>
+          <button class="fbtn" onclick="filterTbl('ranked', this)">
+            ランクマッチ
+          </button>
+          <button class="fbtn" onclick="filterTbl('shooting', this)">
+            シューティング
+          </button>
+          <button class="fbtn" onclick="filterTbl('doodle', this)">
+            ドゥードル
+          </button>
+          <button class="fbtn" onclick="filterTbl('clutch', this)">
+            クラッチ
+          </button>
+          <button class="fbtn" onclick="filterTbl('rocketobby', this)">
+            ロケットオービー
+          </button>
+          <button class="fbtn" onclick="filterTbl('legacy', this)">
+            レガシー
+          </button>
+          <button class="fbtn" onclick="filterTbl('gamemode', this)">
+            ゲームモード
+          </button>
+        </div>
+        <div class="table-wrap">
+          <table>
+            <thead>
+              <tr>
+                <th style="width: 36px">#</th>
+                <th>ゲームモード</th>
+                <th class="r">プレイヤー数</th>
+                <th class="r">前回比</th>
+              </tr>
+            </thead>
+            <tbody id="rank-tbody"></tbody>
+          </table>
+        </div>
+
+        <!-- Ranked breakdown -->
+        <div id="ranked-section" style="display: none">
+          <div class="sec-hd" style="margin-top: 28px; margin-bottom: 14px">
+            <span class="sec-title" style="font-size: 12px; color: var(--txt2)"
+              >ランクモード内訳</span
+            >
+            <div class="sec-line"></div>
+          </div>
+          <div class="ranked-grid">
+            <div class="chart-card" style="margin: 0" id="ranked-pie-wrap">
+              <div class="chart-ttl">
+                <span class="cdot" style="background: var(--yellow)"></span
+                >現在の内訳
+              </div>
+              <div style="height: 180px">
+                <canvas id="ch-ranked-pie"></canvas>
+              </div>
+            </div>
+            <div class="chart-card" style="margin: 0">
+              <div class="chart-ttl">
+                <span class="cdot" style="background: var(--green)"></span
+                >推移（最新50件）
+              </div>
+              <div style="height: 180px">
+                <canvas id="ch-ranked-trend"></canvas>
+              </div>
+            </div>
+          </div>
+        </div>
+
+        <!-- 03 TREND -->
+        <span class="anchor" id="charts"></span>
+        <div class="sec-hd">
+          <span class="sec-tag">03</span
+          ><span class="sec-title">トレンドグラフ</span>
+          <div class="sec-line"></div>
+        </div>
+        <div id="data-info-bar" class="data-info-bar" style="display: none">
+          <span>📊 <strong id="inf-snaps">—</strong> 件のスナップショット</span>
+          <span>📅 <strong id="inf-span">—</strong></span>
+          <span>⚡ 最大 <strong id="inf-dec">—</strong> 点に間引き表示中</span>
+        </div>
+        <div class="chart-card">
+          <div class="chart-ttl">
+            <span class="cdot" style="background: var(--c1)"></span
+            >総プレイヤー数の推移（最新50件）
+          </div>
+          <div style="height: 170px"><canvas id="ch-total"></canvas></div>
+        </div>
+        <div class="chart-card">
+          <div class="chart-ttl">
+            <span class="cdot" style="background: var(--c2)"></span
+            >主要モード別推移（最新50件）
+          </div>
+          <div style="height: 230px"><canvas id="ch-main"></canvas></div>
+        </div>
+        <div class="chart-card">
+          <div class="chart-ttl">
+            <span class="cdot" style="background: #a78bfa"></span>ベッドウォーズ
+            バリアント内訳（最新）
+          </div>
+          <div style="height: 190px"><canvas id="ch-bw"></canvas></div>
+        </div>
+        <div class="sec-hd" style="margin-top: 22px; margin-bottom: 10px">
+          <span class="sec-title" style="font-size: 11px; color: var(--txt2)"
+            >全モード スパークライン</span
+          >
+          <div class="sec-line"></div>
+        </div>
+        <div class="spark-card" id="spark-list"></div>
+
+        <!-- 04 FULL PERIOD -->
+        <span class="anchor" id="fullperiod"></span>
+        <div class="sec-hd">
+          <span class="sec-tag">04</span
+          ><span class="sec-title">全期間グラフ</span>
+          <div class="sec-line"></div>
+        </div>
+        <div class="tab-row">
+          <button class="tab on" onclick="switchFPTab('total', this)">
+            総計
+          </button>
+          <button class="tab" onclick="switchFPTab('modes', this)">
+            全モード比較
+          </button>
+        </div>
+        <div class="chart-card" id="fp-total-card">
+          <div class="chart-ttl">
+            <span class="cdot" style="background: var(--c1)"></span>全期間 /
+            総プレイヤー数
+          </div>
+          <div style="height: 200px"><canvas id="ch-fp-total"></canvas></div>
+        </div>
+        <div class="chart-card" id="fp-modes-card" style="display: none">
+          <div class="chart-ttl">
+            <span class="cdot" style="background: var(--c2)"></span>全期間 /
+            上位モード比較
+          </div>
+          <div style="height: 260px"><canvas id="ch-fp-modes"></canvas></div>
+        </div>
+
+        <!-- 05 MODE EXPLORER -->
+        <span class="anchor" id="modes"></span>
+        <div class="sec-hd">
+          <span class="sec-tag">05</span
+          ><span class="sec-title">モード詳細エクスプローラー</span>
+          <div class="sec-line"></div>
+        </div>
+        <div class="explorer-card">
+          <div class="explorer-nav">
+            <button class="exp-btn" id="exp-prev" onclick="expNav(-1)">
+              &#8592;
+            </button>
+            <div class="exp-mode-info">
+              <div class="exp-mode-name" id="exp-name">—</div>
+              <div class="exp-mode-sub" id="exp-cat">—</div>
+            </div>
+            <span class="exp-counter" id="exp-counter">— / —</span>
+            <input
+              class="exp-search"
+              id="exp-search"
+              type="text"
+              placeholder="🔍 モードを検索..."
+              oninput="expSearch(this.value)"
+            />
+            <button class="exp-btn" id="exp-next" onclick="expNav(1)">
+              &#8594;
+            </button>
+          </div>
+          <div class="exp-stats" id="exp-stats"></div>
+          <div class="exp-chart-wrap" style="height: 200px">
+            <canvas id="ch-exp"></canvas>
+          </div>
+        </div>
+
+        <!-- 06 WEEKLY -->
+        <span class="anchor" id="weekly"></span>
+        <div id="section-weekly" style="display: none">
+          <div class="sec-hd">
+            <span class="sec-tag">06</span
+            ><span class="sec-title">先週比較</span>
+            <div class="sec-line"></div>
+          </div>
+          <div class="weekly-note">
+            ℹ 先週データは
+            <code id="prev-url-note">—</code> から取得します。未設定の場合は
+            ±10% シミュレーション値を使用します。
+          </div>
+          <div class="chart-card">
+            <div class="chart-ttl">
+              <span class="cdot" style="background: var(--green)"></span>今週 vs
+              先週（上位20モード）
+            </div>
+            <div style="height: 290px"><canvas id="ch-weekly"></canvas></div>
+          </div>
+          <div class="weekly-grid" id="weekly-grid"></div>
+        </div>
+      </div>
+    </main>
+
+    <footer>
+      GAMESTAT DASHBOARD　·　
+      <a href="#overview">概要</a> / <a href="#ranking">ランキング</a> /
+      <a href="#charts">トレンド</a> / <a href="#fullperiod">全期間</a> /
+      <a href="#modes">モード詳細</a> / <a href="#weekly">先週比</a>
+    </footer>
+
+    <script>
+      /* ════════════════════════════════════════════
+   ★ 設定
+════════════════════════════════════════════ */
+      const CONFIG = {
+        // レスポンス: [{at:"ISO8601", data:{key:count,...}}, ...] または単一オブジェクトも可
+        url: "https://raw.githubusercontent.com/bulebrainbrand/bloxd-info/refs/heads/main/data.json",
+        // 先週比較エンドポイント（不要なら ''）
+        prevUrl: "",
+      };
+      /* ════════════════════════════════════════════ */
+
+      const WEEK_MS = 7 * 24 * 3600 * 1000;
+      const MAX_PTS = 300;
+
+      /* ─────────────────────────────────────────────
+   モード定義
+   cat:     フィルタリング用カテゴリID
+   label:   表示名
+   isSub:   true = 親モードの内訳（ランキングでインデント表示）
+   parent:  親モードのキー（isSub時）
+   isTotal: true = APIから来る集計キー（bedwars等）
+───────────────────────────────────────────── */
+      const MODE_DEF = {
+        // ── サンドボックス ──
+        classic_survival: {
+          cat: "sandbox",
+          label: "サバイバル",
+          catLabel: "サンドボックス",
+        },
+        classic: {
+          cat: "sandbox",
+          label: "ピースフル",
+          catLabel: "サンドボックス",
+        },
+        classic_creative: {
+          cat: "sandbox",
+          label: "クリエイティブ",
+          catLabel: "サンドボックス",
+        },
+        classic_smp: {
+          cat: "sandbox",
+          label: "SMP",
+          catLabel: "サンドボックス",
+        },
+        worlds: {
+          cat: "sandbox",
+          label: "ワールド",
+          catLabel: "サンドボックス",
+        },
+
+        // ── ベッドウォーズ（bedwars = API総計） ──
+        bedwars: {
+          cat: "bedwars",
+          label: "ベッドウォーズ 合計",
+          catLabel: "ベッドウォーズ",
+          isTotal: true,
+        },
+        bedwars_solo: {
+          cat: "bedwars",
+          label: "BW ソロ",
+          catLabel: "ベッドウォーズ",
+          isSub: true,
+          parent: "bedwars",
+        },
+        bedwars_duo: {
+          cat: "bedwars",
+          label: "BW デュオ",
+          catLabel: "ベッドウォーズ",
+          isSub: true,
+          parent: "bedwars",
+        },
+        bedwars_trio: {
+          cat: "bedwars",
+          label: "BW トリオ",
+          catLabel: "ベッドウォーズ",
+          isSub: true,
+          parent: "bedwars",
+        },
+        bedwars_4v4: {
+          cat: "bedwars",
+          label: "BW 4v4",
+          catLabel: "ベッドウォーズ",
+          isSub: true,
+          parent: "bedwars",
+        },
+        bedwars_4v4v4v4: {
+          cat: "bedwars",
+          label: "BW 4v4v4v4",
+          catLabel: "ベッドウォーズ",
+          isSub: true,
+          parent: "bedwars",
+        },
+        // 新APIキー
+        bw1v1: {
+          cat: "bedwars",
+          label: "BW 1v1",
+          catLabel: "ベッドウォーズ",
+          isSub: true,
+          parent: "bedwars",
+        },
+        bw2v2: {
+          cat: "bedwars",
+          label: "BW 2v2",
+          catLabel: "ベッドウォーズ",
+          isSub: true,
+          parent: "bedwars",
+        },
+        bw4v4v4v4: {
+          cat: "bedwars",
+          label: "BW 4v4v4v4",
+          catLabel: "ベッドウォーズ",
+          isSub: true,
+          parent: "bedwars",
+        },
+        rankbw: {
+          cat: "bedwars",
+          label: "BW ランクマッチ",
+          catLabel: "ベッドウォーズ",
+          isSub: true,
+          parent: "bedwars",
+        },
+
+        // ── ランクマッチ ──
+        ranked: {
+          cat: "ranked",
+          label: "ランクマッチ",
+          catLabel: "ランクマッチ",
+        },
+        ranked_solo: {
+          cat: "ranked",
+          label: "ランクマッチ ソロ",
+          catLabel: "ランクマッチ",
+          isSub: true,
+          parent: "ranked",
+        },
+        ranked_duo: {
+          cat: "ranked",
+          label: "ランクマッチ デュオ",
+          catLabel: "ランクマッチ",
+          isSub: true,
+          parent: "ranked",
+        },
+        ranked_squad: {
+          cat: "ranked",
+          label: "ランクマッチ スクワッド",
+          catLabel: "ランクマッチ",
+          isSub: true,
+          parent: "ranked",
+        },
+
+        // ── キューブウォーフェア = API総計） ──
+        shooting: {
+          cat: "shooting",
+          label: "キューブウォーフェア 合計",
+          catLabel: "キューブウォーフェア",
+          isTotal: true,
+        },
+        shooting_tdm: {
+          cat: "shooting",
+          label: "キューブウォーフェア TDM",
+          catLabel: "キューブウォーフェア",
+          isSub: true,
+          parent: "shooting",
+        },
+        shooting_ffa: {
+          cat: "shooting",
+          label: "キューブウォーフェア FFA",
+          catLabel: "キューブウォーフェア",
+          isSub: true,
+          parent: "shooting",
+        },
+
+        // ── グリーンビル（greenville = API総計） ──
+        greenville: {
+          cat: "greenville",
+          label: "グリーンビル 合計",
+          catLabel: "グリーンビル",
+          isTotal: true,
+        },
+        greenville_profIsland: {
+          cat: "greenville",
+          label: "グリーンビル ノーマル",
+          catLabel: "グリーンビル",
+          isSub: true,
+          parent: "greenville",
+        },
+        greenville_spleefMM: {
+          cat: "greenville",
+          label: "グリーンビル スプリーフ",
+          catLabel: "グリーンビル",
+          isSub: true,
+          parent: "greenville",
+        },
+
+        // ── ドゥードル（doodle = API総計） ──
+        doodle: {
+          cat: "doodle",
+          label: "ドゥードル 合計",
+          catLabel: "ドゥードル",
+          isTotal: true,
+        },
+        doodle_solo: {
+          cat: "doodle",
+          label: "ドゥードル ソロ",
+          catLabel: "ドゥードル",
+          isSub: true,
+          parent: "doodle",
+        },
+        doodle_duo: {
+          cat: "doodle",
+          label: "ドゥードル デュオ",
+          catLabel: "ドゥードル",
+          isSub: true,
+          parent: "doodle",
+        },
+
+        // ── クラッチ（clutch = API総計） ──
+        clutch: {
+          cat: "clutch",
+          label: "クラッチ 合計",
+          catLabel: "クラッチ",
+          isTotal: true,
+        },
+        clutch_1v1: {
+          cat: "clutch",
+          label: "クラッチ 1v1",
+          catLabel: "クラッチ",
+          isSub: true,
+          parent: "clutch",
+        },
+        clutch_2v2: {
+          cat: "clutch",
+          label: "クラッチ 2v2",
+          catLabel: "クラッチ",
+          isSub: true,
+          parent: "clutch",
+        },
+
+        // ── ロケットオービー（rocketParkour = API総計） ──
+        rocketParkour: {
+          cat: "rocketobby",
+          label: "ロケットオービー 合計",
+          catLabel: "ロケットオービー",
+          isTotal: true,
+        },
+        rocketParkour_january: {
+          cat: "rocketobby",
+          label: "ロケットオービー january",
+          catLabel: "ロケットオービー",
+          isSub: true,
+          parent: "rocketParkour",
+        },
+        rocketParkour_sheep: {
+          cat: "rocketobby",
+          label: "ロケットオービー sheep",
+          catLabel: "ロケットオービー",
+          isSub: true,
+          parent: "rocketParkour",
+        },
+
+        // ── デュエル（duels = API総計？） ──
+        duels: {
+          cat: "duels",
+          label: "デュエル 合計",
+          catLabel: "デュエル",
+          isTotal: true,
+        },
+        duels_bed: {
+          cat: "duels",
+          label: "デュエル ベッド",
+          catLabel: "デュエル",
+          isSub: true,
+          parent: "duels",
+        },
+        duels_build: {
+          cat: "duels",
+          label: "デュエル ビルド",
+          catLabel: "デュエル",
+          isSub: true,
+          parent: "duels",
+        },
+
+        // ── エクストラクション ──
+        extraction: {
+          cat: "extraction",
+          label: "エクストラクション",
+          catLabel: "エクストラクション",
+        },
+        extraction_match: {
+          cat: "extraction",
+          label: "エクストラクション マッチ",
+          catLabel: "エクストラクション",
+          isSub: true,
+          parent: "extraction",
+        },
+
+        // ── レガシー ──
+        cooking: { cat: "legacy", label: "クッキング", catLabel: "レガシー" },
+        bingo: { cat: "legacy", label: "ビンゴ", catLabel: "レガシー" },
+        paintball: {
+          cat: "legacy",
+          label: "ペイントボール",
+          catLabel: "レガシー",
+        },
+        rocketSpleef: {
+          cat: "legacy",
+          label: "ロケットスプリーフ",
+          catLabel: "レガシー",
+        },
+
+        // ── 個別ゲームモード ──
+        customGames: {
+          cat: "gamemode",
+          label: "カスタムゲーム",
+          catLabel: "ゲームモード",
+        },
+        pirates: {
+          cat: "gamemode",
+          label: "パイレーツ",
+          catLabel: "ゲームモード",
+        },
+        ninetyNineNights: {
+          cat: "gamemode",
+          label: "99ナイツ",
+          catLabel: "ゲームモード",
+        },
+        luckyTowers: {
+          cat: "gamemode",
+          label: "ラッキータワー",
+          catLabel: "ゲームモード",
+        },
+        lastStand: {
+          cat: "gamemode",
+          label: "ラストスタンド",
+          catLabel: "ゲームモード",
+        },
+        infection: {
+          cat: "gamemode",
+          label: "インフェクション",
+          catLabel: "ゲームモード",
+        },
+        hideseek: {
+          cat: "gamemode",
+          label: "かくれんぼ",
+          catLabel: "ゲームモード",
+        },
+        tsunami: { cat: "gamemode", label: "ツナミ", catLabel: "ゲームモード" },
+        knockout: {
+          cat: "gamemode",
+          label: "ノックアウト",
+          catLabel: "ゲームモード",
+        },
+        simonSays: {
+          cat: "gamemode",
+          label: "サイモンセズ",
+          catLabel: "ゲームモード",
+        },
+        naturalDisaster: {
+          cat: "gamemode",
+          label: "ナチュラルディザスター",
+          catLabel: "ゲームモード",
+        },
+        skywars: {
+          cat: "gamemode",
+          label: "スカイウォーズ",
+          catLabel: "ゲームモード",
+        },
+        murderMystery: {
+          cat: "gamemode",
+          label: "マーダーミステリー",
+          catLabel: "ゲームモード",
+        },
+        eviltower: {
+          cat: "gamemode",
+          label: "イビルタワー",
+          catLabel: "ゲームモード",
+        },
+        fishing: {
+          cat: "gamemode",
+          label: "フィッシング",
+          catLabel: "ゲームモード",
+        },
+        bridge: {
+          cat: "gamemode",
+          label: "ブリッジ",
+          catLabel: "ゲームモード",
+        },
+        bridgeBattle: {
+          cat: "gamemode",
+          label: "ブリッジバトル",
+          catLabel: "ゲームモード",
+        },
+        luckyBattlegrounds: {
+          cat: "gamemode",
+          label: "ラッキーバトルグラウンド",
+          catLabel: "ゲームモード",
+        },
+        parkour: {
+          cat: "gamemode",
+          label: "パルクール",
+          catLabel: "ゲームモード",
+        },
+        oneBlock: {
+          cat: "gamemode",
+          label: "ワンブロック",
+          catLabel: "ゲームモード",
+        },
+        plots: { cat: "gamemode", label: "プロット", catLabel: "ゲームモード" },
+        arcadeMode: {
+          cat: "gamemode",
+          label: "アーケード",
+          catLabel: "ゲームモード",
+        },
+      };
+
+      // 定義にないキーのフォールバック
+      function getDef(k) {
+        return (
+          MODE_DEF[k] || { cat: "gamemode", label: k, catLabel: "ゲームモード" }
+        );
+      }
+      const nm = (k) => getDef(k).label;
+      const cat = (k) => getDef(k).cat;
+      const catLabel = (k) => getDef(k).catLabel;
+
+      // カテゴリ表示色
+      const CAT_COLORS = {
+        sandbox: "rgba(0,230,118,.2)",
+        bedwars: "rgba(124,58,237,.3)",
+        ranked: "rgba(255,214,0,.2)",
+        shooting: "rgba(255,95,46,.25)",
+        greenville: "rgba(0,217,255,.2)",
+        doodle: "rgba(255,152,0,.2)",
+        clutch: "rgba(255,214,0,.15)",
+        rocketobby: "rgba(255,214,0,.2)",
+        duels: "rgba(255,95,46,.2)",
+        legacy: "rgba(80,90,120,.25)",
+        gamemode: "rgba(0,217,255,.12)",
+        extraction: "rgba(124,58,237,.2)",
+      };
+      const CAT_ICONS = {
+        sandbox: "🌲",
+        bedwars: "🛏",
+        ranked: "🏅",
+        shooting: "🎯",
+        greenville: "🏘",
+        doodle: "🎨",
+        clutch: "🏆",
+        rocketobby: "🚀",
+        duels: "⚔️",
+        legacy: "🕹️",
+        gamemode: "🎮",
+        extraction: "📦",
+      };
+      const MODE_COLORS = [
+        "#00d9ff",
+        "#ff5f2e",
+        "#a78bfa",
+        "#00e676",
+        "#ffd600",
+        "#ff9800",
+        "#f06292",
+        "#4dd0e1",
+        "#aed581",
+        "#ffb74d",
+        "#ce93d8",
+        "#80deea",
+        "#ef9a9a",
+        "#80cbc4",
+      ];
+
+      /* ── LTTB ── */
+      function lttb(pts, n) {
+        const L = pts.length;
+        if (L <= n) return pts;
+        const result = [pts[0]];
+        const bs = (L - 2) / (n - 2);
+        let a = 0;
+        for (let i = 0; i < n - 2; i++) {
+          let as2 = Math.floor((i + 1) * bs) + 1,
+            ae = Math.min(Math.floor((i + 2) * bs) + 1, L);
+          let ax = 0,
+            ay = 0,
+            al = ae - as2;
+          for (let j = as2; j < ae; j++) {
+            ax += j;
+            ay += pts[j].v;
+          }
+          ax /= al;
+          ay /= al;
+          let rs = Math.floor(i * bs) + 1,
+            re = Math.floor((i + 1) * bs) + 1;
+          const px = a,
+            py = pts[a].v;
+          let maxA = -1,
+            nextA = rs;
+          for (let j = rs; j < re; j++) {
+            const area =
+              Math.abs((px - ax) * (pts[j].v - py) - (px - j) * (ay - py)) / 2;
+            if (area > maxA) {
+              maxA = area;
+              nextA = j;
+            }
+          }
+          result.push(pts[nextA]);
+          a = nextA;
+        }
+        result.push(pts[L - 1]);
+        return result;
+      }
+
+      function decimateKey(key, n = MAX_PTS) {
+        return lttb(
+          snapshots.map((s) => ({
+            t: new Date(s.at).getTime(),
+            v: s.data[key] || 0,
+          })),
+          n,
+        );
+      }
+      function decimateTotal(n = MAX_PTS) {
+        return lttb(
+          snapshots.map((s) => ({
+            t: new Date(s.at).getTime(),
+            v: Object.values(s.data).reduce((a, b) => a + b, 0),
+          })),
+          n,
+        );
+      }
+
+      function fmtLabel(ts, spanMs) {
+        const d = new Date(ts);
+        if (spanMs < 3600000 * 4)
+          return `${h2(d.getHours())}:${h2(d.getMinutes())}`;
+        if (spanMs < 86400000 * 3)
+          return `${d.getMonth() + 1}/${d.getDate()} ${h2(d.getHours())}:00`;
+        if (spanMs < 86400000 * 30) return `${d.getMonth() + 1}/${d.getDate()}`;
+        return `${d.getFullYear()}/${h2(d.getMonth() + 1)}/${h2(d.getDate())}`;
+      }
+      function h2(n) {
+        return String(n).padStart(2, "0");
+      }
+      function fmtSpan(ms) {
+        if (ms < 3600000) return `${Math.round(ms / 60000)}分`;
+        if (ms < 86400000) return `${(ms / 3600000).toFixed(1)}時間`;
+        if (ms < 86400000 * 30) return `${Math.round(ms / 86400000)}日`;
+        return `${(ms / 86400000 / 30).toFixed(1)}ヶ月`;
+      }
+      function fmtNum(v) {
+        return v.toLocaleString("ja-JP");
+      }
+
+      let snapshots = [],
+        prevSnaps = [];
+      let charts = {};
+      let expKeys = [],
+        expIndex = 0,
+        expFiltered = null,
+        fpSpanMs = 0;
+      const $id = (id) => document.getElementById(id);
+
+      function setStatus(s, t) {
+        $id("s-dot").className = "s-dot " + s;
+        $id("s-txt").textContent = t;
+      }
+      function showLoading(m) {
+        $id("load-msg").textContent = m || "データを取得中...";
+        $id("loading-screen").style.display = "flex";
+        $id("error-screen").style.display = "none";
+        $id("dashboard").style.display = "none";
+      }
+      function showError(m) {
+        $id("loading-screen").style.display = "none";
+        $id("error-screen").style.display = "flex";
+        $id("dashboard").style.display = "none";
+        $id("err-msg").innerHTML = m;
+      }
+      function showDashboard() {
+        $id("loading-screen").style.display = "none";
+        $id("error-screen").style.display = "none";
+        $id("dashboard").style.display = "block";
+      }
+
+      async function fetchData() {
+        setStatus("loading", "取得中...");
+        showLoading();
+        try {
+          const res = await fetch(CONFIG.url, { cache: "no-store" });
+          if (!res.ok) throw new Error(`HTTP ${res.status} ${res.statusText}`);
+          showLoading("解析中...");
+          await tick();
+          const raw = await res.json();
+          snapshots = Array.isArray(raw) ? raw : [raw];
+          snapshots.sort((a, b) => new Date(a.at) - new Date(b.at));
+          if (!snapshots.length) throw new Error("データが空です");
+          if (CONFIG.prevUrl) {
+            try {
+              const pr = await fetch(CONFIG.prevUrl, { cache: "no-store" });
+              prevSnaps = pr.ok
+                ? ((d) => (Array.isArray(d) ? d : [d]))(await pr.json())
+                : [];
+            } catch {
+              prevSnaps = [];
+            }
+          } else {
+            prevSnaps = [];
+          }
+          setStatus("live", "ライブ");
+          showLoading("レンダリング中...");
+          await tick();
+          render();
+          showDashboard();
+        } catch (err) {
+          console.error(err);
+          setStatus("error", "エラー");
+          showError(
+            `エンドポイントに接続できませんでした。<br><code>${CONFIG.url}</code><br>${err.message}`,
+          );
+        }
+      }
+      const tick = () => new Promise((r) => setTimeout(r, 0));
+
+      function mkChart(id, cfg) {
+        if (charts[id]) {
+          charts[id].destroy();
+          delete charts[id];
+        }
+        const el = $id(id);
+        if (!el) return;
+        charts[id] = new Chart(el.getContext("2d"), cfg);
+      }
+      function scaleOpts(spanMs) {
+        return {
+          x: {
+            ticks: {
+              color: "#3d5470",
+              font: { family: "JetBrains Mono", size: 8 },
+              maxTicksLimit: 8,
+              maxRotation: 0,
+            },
+            grid: { color: "rgba(26,46,74,.35)" },
+          },
+          y: {
+            ticks: {
+              color: "#3d5470",
+              font: { family: "JetBrains Mono", size: 8 },
+              callback: (v) => (v >= 1000 ? `${(v / 1000).toFixed(1)}k` : v),
+            },
+            grid: { color: "rgba(26,46,74,.35)" },
+          },
+        };
+      }
+
+      /* ════════════ MAIN RENDER ════════════ */
+      function render() {
+        const latest = snapshots[snapshots.length - 1];
+        const first = snapshots[0];
+        const prev2 =
+          snapshots.length >= 2 ? snapshots[snapshots.length - 2] : null;
+        const d = latest.data;
+        const spanMs = new Date(latest.at) - new Date(first.at);
+        fpSpanMs = spanMs;
+
+        // ランキング用: isSub=trueのモードはランキングから除外（各カテゴリのtotal or 独立キーのみ）
+        // ただし bedwars のサブキーは含む（APIから個別に来ている場合 total行の下に表示）
+        const rankEntries = Object.entries(d)
+          .filter(([k]) => {
+            const def = getDef(k);
+            // isSubでも、親キーがデータに存在しない場合は表示
+            if (def.isSub && def.parent && d[def.parent] !== undefined)
+              return false;
+            return true;
+          })
+          .sort((a, b) => b[1] - a[1]);
+
+        // 全エントリ（スパークライン・エクスプローラー用）
+        const allEntries = Object.entries(d).sort((a, b) => b[1] - a[1]);
+        const total = allEntries.reduce((s, [, v]) => s + v, 0);
+        const firstTot = Object.values(first.data).reduce((s, v) => s + v, 0);
+        const recentN = Math.min(50, snapshots.length);
+        const recent = snapshots.slice(-recentN);
+        const recSpanMs =
+          recent.length > 1
+            ? new Date(recent[recent.length - 1].at) - new Date(recent[0].at)
+            : spanMs;
+
+        // hero
+        $id("h-total").textContent = fmtNum(total);
+        $id("h-ts").textContent = fmtLabel(new Date(latest.at).getTime(), 0);
+        $id("h-snaps").textContent = fmtNum(snapshots.length);
+        $id("h-span").textContent = spanMs > 0 ? fmtSpan(spanMs) : "—";
+        $id("prev-url-note").textContent = CONFIG.prevUrl || "未設定";
+
+        // data info
+        if (snapshots.length > MAX_PTS) {
+          const bar = $id("data-info-bar");
+          bar.style.display = "flex";
+          $id("inf-snaps").textContent = fmtNum(snapshots.length);
+          $id("inf-span").textContent = fmtSpan(spanMs);
+          $id("inf-dec").textContent = MAX_PTS;
+        }
+
+        // KPI
+        const top = rankEntries[0];
+        $id("k-topname").textContent = nm(top[0]);
+        $id("k-topcnt").textContent = fmtNum(top[1]) + " 人";
+        $id("k-custom").textContent = fmtNum(d.customGames || 0);
+        // BW: bedwarsキーがあればそれを、なければサブキー合算
+        const bwTotal =
+          d.bedwars ??
+          Object.entries(d)
+            .filter(
+              ([k]) =>
+                getDef(k).cat === "bedwars" &&
+                !getDef(k).isSub === false &&
+                getDef(k).isSub,
+            )
+            .reduce((s, [, v]) => s + v, 0);
+        $id("k-bw").textContent = fmtNum(bwTotal || 0);
+        const sandboxKeys = [
+          "classic_survival",
+          "classic",
+          "classic_creative",
+          "classic_smp",
+          "worlds",
+          "oneBlock",
+          "plots",
+        ];
+        const sandboxTotal = sandboxKeys.reduce((s, k) => s + (d[k] || 0), 0);
+        $id("k-sandbox").textContent = fmtNum(sandboxTotal);
+        const battleKeys = Object.keys(d).filter(
+          (k) =>
+            getDef(k).cat === "bedwars" ||
+            k === "skywars" ||
+            getDef(k).cat === "shooting" ||
+            k === "bridgeBattle" ||
+            k === "luckyBattlegrounds",
+        );
+        $id("k-battle").textContent = fmtNum(
+          battleKeys.reduce((s, k) => s + (d[k] || 0), 0),
+        );
+        const delta = total - firstTot;
+        const kd = $id("k-delta");
+        kd.textContent = (delta >= 0 ? "+" : "") + fmtNum(delta);
+        kd.style.color =
+          delta > 0 ? "var(--green)" : delta < 0 ? "var(--red)" : "var(--txt)";
+        $id("k-delta-s").textContent =
+          `${fmtLabel(new Date(first.at).getTime(), 0)} → ${fmtLabel(new Date(latest.at).getTime(), 0)}`;
+
+        // top5 (サブキー除外 top)
+        const t5 = rankEntries.filter(([k]) => k !== "customGames").slice(0, 5);
+        const maxV = t5[0][1];
+        $id("top5").innerHTML = t5
+          .map(
+            ([k, v], i) => `
+    <div class="top5-item">
+      <div class="t5-rank ${["r1", "r2", "r3", "rx", "rx"][i]}">${i + 1}</div>
+      <div class="t5-info"><div class="t5-name">${nm(k)}</div><div class="t5-cat">${catLabel(k)}</div></div>
+      <div class="t5-bwrap">
+        <div class="t5-bg"><div class="t5-fill" style="width:${((v / maxV) * 100).toFixed(1)}%"></div></div>
+        <div class="t5-cnt">${fmtNum(v)}</div>
+      </div>
+    </div>`,
+          )
+          .join("");
+
+        // ── ランキングテーブル ──
+        // サブキーは親の直後にインデント表示
+        const displayed = new Set();
+        let rows = "",
+          rank = 1;
+
+        for (const [k, v] of rankEntries) {
+          if (displayed.has(k)) continue;
+          displayed.add(k);
+          const def = getDef(k);
+          let diff = "",
+            cls = "fl";
+          if (prev2) {
+            const dd = v - (prev2.data[k] ?? 0);
+            if (dd > 0) {
+              diff = `+${dd}`;
+              cls = "up";
+            } else if (dd < 0) {
+              diff = String(dd);
+              cls = "dn";
+            } else diff = "±0";
+          }
+          rows += `<tr data-cat="${def.cat}" data-key="${k}">
+      <td class="td-rk">${rank++}</td>
+      <td class="td-nm">${nm(k)}<span class="td-cat">${catLabel(k)}</span></td>
+      <td class="r td-n">${fmtNum(v)}</td>
+      <td class="r td-d ${cls}">${diff}</td>
+    </tr>`;
+
+          // サブキーを直後に挿入
+          if (def.isTotal || def.cat === "bedwars") {
+            const subEntries = Object.entries(d)
+              .filter(([sk]) => {
+                const sd = getDef(sk);
+                return sd.isSub && sd.parent === k;
+              })
+              .sort((a, b) => b[1] - a[1]);
+            for (const [sk, sv] of subEntries) {
+              if (displayed.has(sk)) continue;
+              displayed.add(sk);
+              let sd = "",
+                sc = "fl";
+              if (prev2) {
+                const dd = sv - (prev2.data[sk] ?? 0);
+                if (dd > 0) {
+                  sd = `+${dd}`;
+                  sc = "up";
+                } else if (dd < 0) {
+                  sd = String(dd);
+                  sc = "dn";
+                } else sd = "±0";
+              }
+              rows += `<tr class="is-sub" data-cat="${getDef(sk).cat}" data-key="${sk}">
+          <td class="td-rk">—</td>
+          <td class="td-nm">${nm(sk)}</td>
+          <td class="r td-n" style="color:var(--txt2)">${fmtNum(sv)}</td>
+          <td class="r td-d ${sc}">${sd}</td>
+        </tr>`;
+            }
+          }
+        }
+        $id("rank-tbody").innerHTML = rows;
+
+        // ── ランクモード内訳 ──
+        const rKeys = Object.keys(d).filter((k) => getDef(k).cat === "ranked");
+        if (rKeys.length) {
+          $id("ranked-section").style.display = "block";
+          if (rKeys.length === 1) {
+            $id("ranked-pie-wrap").style.display = "none";
+          } else {
+            $id("ranked-pie-wrap").style.display = "block";
+            const rTotals = rKeys.filter((k) => !getDef(k).isSub);
+            const rDisplay = rTotals.length ? rTotals : rKeys;
+            mkChart("ch-ranked-pie", {
+              type: "doughnut",
+              data: {
+                labels: rDisplay.map(nm),
+                datasets: [
+                  {
+                    data: rDisplay.map((k) => d[k] || 0),
+                    backgroundColor: MODE_COLORS,
+                    borderColor: "#0f1b2d",
+                    borderWidth: 2,
+                    hoverOffset: 6,
+                  },
+                ],
+              },
+              options: {
+                responsive: true,
+                maintainAspectRatio: false,
+                plugins: {
+                  legend: {
+                    display: true,
+                    position: "bottom",
+                    labels: {
+                      color: "#7a95ba",
+                      font: { family: "Noto Sans JP", size: 9 },
+                      padding: 8,
+                      boxWidth: 9,
+                    },
+                  },
+                  tooltip: {
+                    callbacks: {
+                      label: (c) => `${c.label}: ${fmtNum(c.raw)}人`,
+                    },
+                  },
+                },
+              },
+            });
+          }
+          const rAllKeys = rKeys.filter((k) => !getDef(k).isSub);
+          mkChart("ch-ranked-trend", {
+            type: "line",
+            data: {
+              labels: recent.map((s) =>
+                fmtLabel(new Date(s.at).getTime(), recSpanMs),
+              ),
+              datasets: (rAllKeys.length ? rAllKeys : rKeys).map((k, i) => ({
+                label: nm(k),
+                data: recent.map((s) => s.data[k] || 0),
+                borderColor: MODE_COLORS[i],
+                backgroundColor: MODE_COLORS[i] + "18",
+                tension: 0.4,
+                fill: false,
+                pointRadius: recent.length > 30 ? 0 : 2,
+                borderWidth: 1.6,
+              })),
+            },
+            options: {
+              responsive: true,
+              maintainAspectRatio: false,
+              plugins: {
+                legend: {
+                  display: true,
+                  labels: {
+                    color: "#7a95ba",
+                    font: { family: "Noto Sans JP", size: 9 },
+                    padding: 7,
+                    boxWidth: 9,
+                  },
+                },
+                tooltip: {
+                  callbacks: {
+                    label: (c) => `${c.dataset.label}: ${fmtNum(c.raw)}人`,
+                  },
+                },
+              },
+              scales: scaleOpts(recSpanMs),
+            },
+          });
+        } else {
+          $id("ranked-section").style.display = "none";
+        }
+
+        // ── トレンドチャート ──
+        const recLabels = recent.map((s) =>
+          fmtLabel(new Date(s.at).getTime(), recSpanMs),
+        );
+
+        mkChart("ch-total", {
+          type: "line",
+          data: {
+            labels: recLabels,
+            datasets: [
+              {
+                label: "総プレイヤー数",
+                fill: true,
+                data: recent.map((s) =>
+                  Object.values(s.data).reduce((a, b) => a + b, 0),
+                ),
+                borderColor: "#00d9ff",
+                backgroundColor: "rgba(0,217,255,.08)",
+                tension: 0.4,
+                pointRadius: recent.length > 30 ? 0 : 3,
+                pointBackgroundColor: "#00d9ff",
+                borderWidth: 2,
+              },
+            ],
+          },
+          options: {
+            responsive: true,
+            maintainAspectRatio: false,
+            plugins: {
+              legend: { display: false },
+              tooltip: { callbacks: { label: (c) => `${fmtNum(c.raw)}人` } },
+            },
+            scales: scaleOpts(recSpanMs),
+          },
+        });
+
+        // 主要モード: sandbox総計・BW・luckyBG等
+        const mainKeys = [
+          { k: "classic_survival", c: "#00e676" },
+          { k: "bedwars", c: "#a78bfa" },
+          { k: "luckyBattlegrounds", c: "#ff9800" },
+          { k: "tsunami", c: "#00d9ff" },
+          { k: "ninetyNineNights", c: "#ffd600" },
+          { k: "customGames", c: "#ff5f2e" },
+        ].filter((m) => d[m.k] !== undefined);
+        mkChart("ch-main", {
+          type: "line",
+          data: {
+            labels: recLabels,
+            datasets: mainKeys.map((m) => ({
+              label: nm(m.k),
+              data: recent.map((s) => s.data[m.k] || 0),
+              borderColor: m.c,
+              backgroundColor: m.c + "18",
+              tension: 0.4,
+              fill: false,
+              pointRadius: recent.length > 30 ? 0 : 2,
+              borderWidth: 1.6,
+            })),
+          },
+          options: {
+            responsive: true,
+            maintainAspectRatio: false,
+            plugins: {
+              legend: {
+                display: true,
+                labels: {
+                  color: "#7a95ba",
+                  font: { family: "Noto Sans JP", size: 9 },
+                  padding: 7,
+                  boxWidth: 8,
+                },
+              },
+              tooltip: {
+                callbacks: {
+                  label: (c) => `${c.dataset.label}: ${fmtNum(c.raw)}人`,
+                },
+              },
+            },
+            scales: scaleOpts(recSpanMs),
+          },
+        });
+
+        // BW内訳
+        const bwKeys = Object.keys(d).filter(
+          (k) => getDef(k).cat === "bedwars" && getDef(k).isSub,
+        );
+        const bwDisplay = bwKeys.length
+          ? bwKeys
+          : Object.keys(d).filter((k) => getDef(k).cat === "bedwars");
+        if (bwDisplay.length) {
+          mkChart("ch-bw", {
+            type: "doughnut",
+            data: {
+              labels: bwDisplay.map(nm),
+              datasets: [
+                {
+                  data: bwDisplay.map((k) => d[k] || 0),
+                  backgroundColor: MODE_COLORS,
+                  borderColor: "#0f1b2d",
+                  borderWidth: 2,
+                  hoverOffset: 8,
+                },
+              ],
+            },
+            options: {
+              responsive: true,
+              maintainAspectRatio: false,
+              plugins: {
+                legend: {
+                  display: true,
+                  position: "right",
+                  labels: {
+                    color: "#7a95ba",
+                    font: { family: "Noto Sans JP", size: 10 },
+                    padding: 10,
+                    boxWidth: 10,
+                  },
+                },
+                tooltip: {
+                  callbacks: { label: (c) => `${c.label}: ${fmtNum(c.raw)}人` },
+                },
+              },
+            },
+          });
+        }
+
+        // ── スパークライン (lazy) ──
+        const sparkEl = $id("spark-list");
+        sparkEl.innerHTML = "";
+        const obs = new IntersectionObserver(
+          (entries) => {
+            entries.forEach((e) => {
+              if (e.isIntersecting) {
+                drawSpark(e.target);
+                obs.unobserve(e.target);
+              }
+            });
+          },
+          { rootMargin: "120px" },
+        );
+        allEntries.forEach(([k, v]) => {
+          const sid = "sp-" + k.replace(/\W/g, "");
+          const row = document.createElement("div");
+          row.className = "spark-row";
+          row.title = nm(k) + " の詳細を見る";
+          row.innerHTML = `<div class="sp-name">${nm(k)}<span class="sp-arrow">&#8594;</span></div><canvas id="${sid}" width="120" height="34" data-key="${k}"></canvas><div class="sp-cnt">${fmtNum(v)}</div>`;
+          row.addEventListener("click", () => jumpToExplorer(k));
+          sparkEl.appendChild(row);
+          obs.observe(row.querySelector("canvas"));
+        });
+
+        // ── 全期間グラフ ──
+        renderFullPeriod(rankEntries, spanMs);
+
+        // ── エクスプローラー ──
+        expKeys = allEntries.map(([k]) => k);
+        expFiltered = null;
+        expIndex = 0;
+        renderExplorer(spanMs);
+
+        // ── 先週比（7日未満なら非表示） ──
+        if (spanMs >= WEEK_MS) {
+          $id("section-weekly").style.display = "block";
+          renderWeekly(rankEntries, d);
+        } else {
+          $id("section-weekly").style.display = "none";
+        }
+      }
+
+      function drawSpark(canvas) {
+        const k = canvas.dataset.key;
+        const raw = snapshots.map((s) => s.data[k] || 0);
+        const dec =
+          raw.length > 50
+            ? lttb(
+                raw.map((v, i) => ({ t: i, v })),
+                50,
+              ).map((p) => p.v)
+            : raw;
+        const W = canvas.width,
+          H = canvas.height,
+          p = 2;
+        const mn = Math.min(...dec),
+          range = Math.max(...dec) - mn || 1;
+        const cx = canvas.getContext("2d");
+        cx.clearRect(0, 0, W, H);
+        cx.beginPath();
+        dec.forEach((v, i) => {
+          const x = p + ((W - p * 2) * i) / Math.max(dec.length - 1, 1),
+            y = H - p - ((H - p * 2) * (v - mn)) / range;
+          i === 0 ? cx.moveTo(x, y) : cx.lineTo(x, y);
+        });
+        cx.strokeStyle = "#00d9ff";
+        cx.lineWidth = 1.4;
+        cx.stroke();
+        cx.lineTo(p + (W - p * 2), H);
+        cx.lineTo(p, H);
+        cx.closePath();
+        cx.fillStyle = "rgba(0,217,255,.06)";
+        cx.fill();
+      }
+
+      function renderFullPeriod(rankEntries, spanMs) {
+        const decTotal = decimateTotal(MAX_PTS);
+        const labels = decTotal.map((p) => fmtLabel(p.t, spanMs));
+        mkChart("ch-fp-total", {
+          type: "line",
+          data: {
+            labels,
+            datasets: [
+              {
+                label: "総プレイヤー数",
+                fill: true,
+                data: decTotal.map((p) => p.v),
+                borderColor: "#00d9ff",
+                backgroundColor: "rgba(0,217,255,.07)",
+                tension: 0.3,
+                pointRadius: decTotal.length > 100 ? 0 : 2,
+                borderWidth: 2,
+              },
+            ],
+          },
+          options: {
+            responsive: true,
+            maintainAspectRatio: false,
+            plugins: {
+              legend: { display: false },
+              tooltip: { callbacks: { label: (c) => `${fmtNum(c.raw)}人` } },
+            },
+            scales: scaleOpts(spanMs),
+          },
+        });
+
+        const top10 = rankEntries
+          .filter(([k]) => k !== "customGames")
+          .slice(0, 10);
+        mkChart("ch-fp-modes", {
+          type: "line",
+          data: {
+            labels,
+            datasets: top10.map(([k], i) => {
+              const dec = decimateKey(k, MAX_PTS);
+              return {
+                label: nm(k),
+                data: dec.map((p) => p.v),
+                borderColor: MODE_COLORS[i % MODE_COLORS.length],
+                backgroundColor: MODE_COLORS[i % MODE_COLORS.length] + "12",
+                tension: 0.3,
+                fill: false,
+                pointRadius: dec.length > 100 ? 0 : 2,
+                borderWidth: 1.5,
+              };
+            }),
+          },
+          options: {
+            responsive: true,
+            maintainAspectRatio: false,
+            plugins: {
+              legend: {
+                display: true,
+                labels: {
+                  color: "#7a95ba",
+                  font: { family: "Noto Sans JP", size: 9 },
+                  padding: 7,
+                  boxWidth: 8,
+                },
+              },
+              tooltip: {
+                callbacks: {
+                  label: (c) => `${c.dataset.label}: ${fmtNum(c.raw)}人`,
+                },
+              },
+            },
+            scales: scaleOpts(spanMs),
+          },
+        });
+      }
+
+      function switchFPTab(tab, btn) {
+        document
+          .querySelectorAll(".tab")
+          .forEach((b) => b.classList.remove("on"));
+        btn.classList.add("on");
+        $id("fp-total-card").style.display = tab === "total" ? "block" : "none";
+        $id("fp-modes-card").style.display = tab === "modes" ? "block" : "none";
+      }
+
+      /* ── Explorer ── */
+      function renderExplorer(spanMs) {
+        const keys = expFiltered || expKeys;
+        if (!keys.length) return;
+        expIndex = Math.min(expIndex, keys.length - 1);
+        const k = keys[expIndex];
+        const d = snapshots[snapshots.length - 1].data;
+        const vals = snapshots.map((s) => s.data[k] || 0);
+        const dec = decimateKey(k, MAX_PTS);
+        $id("exp-name").textContent = nm(k);
+        $id("exp-cat").textContent = catLabel(k);
+        $id("exp-counter").textContent = `${expIndex + 1} / ${keys.length}`;
+        $id("exp-prev").disabled = expIndex === 0;
+        $id("exp-next").disabled = expIndex === keys.length - 1;
+        const peak = Math.max(...vals),
+          avg = Math.round(vals.reduce((a, b) => a + b, 0) / vals.length);
+        $id("exp-stats").innerHTML = `
+    <div class="exp-stat">現在 <strong>${fmtNum(d[k] || 0)}</strong></div>
+    <div class="exp-stat">最大 <strong>${fmtNum(peak)}</strong></div>
+    <div class="exp-stat">平均 <strong>${fmtNum(avg)}</strong></div>
+    <div class="exp-stat">記録数 <strong>${fmtNum(vals.length)}</strong></div>`;
+        mkChart("ch-exp", {
+          type: "line",
+          data: {
+            labels: dec.map((p) => fmtLabel(p.t, spanMs)),
+            datasets: [
+              {
+                label: nm(k),
+                fill: true,
+                data: dec.map((p) => p.v),
+                borderColor: "#00d9ff",
+                backgroundColor: "rgba(0,217,255,.07)",
+                tension: 0.4,
+                pointRadius: dec.length > 80 ? 0 : 3,
+                pointBackgroundColor: "#00d9ff",
+                borderWidth: 2,
+              },
+            ],
+          },
+          options: {
+            responsive: true,
+            maintainAspectRatio: false,
+            animation: { duration: 180 },
+            plugins: {
+              legend: { display: false },
+              tooltip: { callbacks: { label: (c) => `${fmtNum(c.raw)}人` } },
+            },
+            scales: scaleOpts(spanMs),
+          },
+        });
+        const w = $id("ch-exp").parentElement;
+        w.classList.remove("exp-anim");
+        void w.offsetWidth;
+        w.classList.add("exp-anim");
+      }
+      function expNav(dir) {
+        expIndex = Math.max(
+          0,
+          Math.min((expFiltered || expKeys).length - 1, expIndex + dir),
+        );
+        renderExplorer(fpSpanMs);
+      }
+      function expSearch(q) {
+        const s = q.trim().toLowerCase();
+        expFiltered = s
+          ? expKeys.filter(
+              (k) =>
+                nm(k).toLowerCase().includes(s) ||
+                k.toLowerCase().includes(s) ||
+                catLabel(k).toLowerCase().includes(s),
+            )
+          : null;
+        if (expFiltered && !expFiltered.length) expFiltered = null;
+        expIndex = 0;
+        renderExplorer(fpSpanMs);
+      }
+      document.addEventListener("keydown", (e) => {
+        if (
+          $id("dashboard").style.display === "none" ||
+          document.activeElement === $id("exp-search")
+        )
+          return;
+        if (e.key === "ArrowLeft") expNav(-1);
+        if (e.key === "ArrowRight") expNav(1);
+      });
+      window.addEventListener("load", () => {
+        const el = document.querySelector(".explorer-card");
+        if (!el) return;
+        let tx = 0;
+        el.addEventListener("touchstart", (e) => (tx = e.touches[0].clientX), {
+          passive: true,
+        });
+        el.addEventListener(
+          "touchend",
+          (e) => {
+            if (Math.abs(tx - e.changedTouches[0].clientX) > 40)
+              expNav(tx > e.changedTouches[0].clientX ? 1 : -1);
+          },
+          { passive: true },
+        );
+      });
+
+      /* ── Weekly ── */
+      function renderWeekly(rankEntries, d) {
+        const top20 = rankEntries
+          .filter(([k]) => k !== "customGames")
+          .slice(0, 20);
+        const curData = top20.map(([, v]) => v);
+        const prevData = prevSnaps.length
+          ? top20.map(([k]) => prevSnaps[prevSnaps.length - 1].data[k] || 0)
+          : curData.map((v) => Math.round(v * (0.88 + Math.random() * 0.24)));
+        mkChart("ch-weekly", {
+          type: "bar",
+          data: {
+            labels: top20.map(([k]) => nm(k)),
+            datasets: [
+              {
+                label: "今週",
+                data: curData,
+                backgroundColor: "rgba(0,217,255,.7)",
+                borderColor: "#00d9ff",
+                borderWidth: 1,
+                borderRadius: 3,
+              },
+              {
+                label: "先週",
+                data: prevData,
+                backgroundColor: "rgba(255,95,46,.45)",
+                borderColor: "#ff5f2e",
+                borderWidth: 1,
+                borderRadius: 3,
+              },
+            ],
+          },
+          options: {
+            responsive: true,
+            maintainAspectRatio: false,
+            plugins: {
+              legend: {
+                display: true,
+                labels: {
+                  color: "#7a95ba",
+                  font: { family: "Noto Sans JP", size: 10 },
+                  padding: 9,
+                  boxWidth: 9,
+                },
+              },
+              tooltip: {
+                callbacks: {
+                  label: (c) => `${c.dataset.label}: ${fmtNum(c.raw)}人`,
+                },
+              },
+            },
+            scales: {
+              x: {
+                ticks: {
+                  color: "#3d5470",
+                  font: { family: "Noto Sans JP", size: 9 },
+                  maxRotation: 40,
+                },
+                grid: { color: "rgba(26,46,74,.35)" },
+              },
+              y: {
+                ticks: {
+                  color: "#3d5470",
+                  font: { family: "JetBrains Mono", size: 8 },
+                  callback: (v) =>
+                    v >= 1000 ? `${(v / 1000).toFixed(1)}k` : v,
+                },
+                grid: { color: "rgba(26,46,74,.35)" },
+              },
+            },
+          },
+        });
+        $id("weekly-grid").innerHTML = top20
+          .slice(0, 8)
+          .map(([k, v], i) => {
+            const pv = prevData[i],
+              diff = v - pv,
+              pct = pv ? ((diff / pv) * 100).toFixed(1) : "—",
+              c = cat(k);
+            return `<div class="wk-card">
+      <div class="wk-icon" style="background:${CAT_COLORS[c] || "rgba(80,90,120,.25)"}">${CAT_ICONS[c] || "🎮"}</div>
+      <div class="wk-info"><div class="wk-name">${nm(k)}</div><div class="wk-sub">今週 ${fmtNum(v)} 人</div></div>
+      <div class="wk-diff" style="color:${diff > 0 ? "var(--green)" : diff < 0 ? "var(--red)" : "var(--txt2)"}">
+        ${diff >= 0 ? "+" : ""}${fmtNum(diff)}<small>${pct !== "—" ? (diff >= 0 ? "+" : "") + pct + "%" : "—"}</small>
+      </div>
+    </div>`;
+          })
+          .join("");
+      }
+
+      /* ── Filter ── */
+      function filterTbl(key, btn) {
+        document
+          .querySelectorAll(".fbtn")
+          .forEach((b) => b.classList.remove("on"));
+        btn.classList.add("on");
+        document.querySelectorAll("#rank-tbody tr").forEach((tr) => {
+          if (key === "all") {
+            tr.classList.remove("hide");
+            return;
+          }
+          tr.classList.toggle("hide", tr.dataset.cat !== key);
+        });
+      }
+
+      function jumpToExplorer(key) {
+        // エクスプローラーのフィルターをリセットして該当モードを選択
+        expFiltered = null;
+        expIndex = expKeys.indexOf(key);
+        if (expIndex < 0) expIndex = 0;
+        // 検索フィールドもリセット
+        const s = $id("exp-search");
+        if (s) s.value = "";
+        renderExplorer(fpSpanMs);
+        // スクロール（少し待ってレンダリング後に飛ぶ）
+        setTimeout(() => {
+          const el = $id("modes");
+          if (el) el.scrollIntoView({ behavior: "smooth", block: "start" });
+        }, 80);
+      }
+
+      fetchData();
+    </script>
+  </body>
+</html>
