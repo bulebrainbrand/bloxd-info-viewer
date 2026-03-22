@@ -218,7 +218,8 @@ footer a:hover{color:var(--c1)}
     <!-- Search -->
     <div class="search-wrap">
       <input class="search-input" id="search-input" type="text"
-        placeholder="🔍 ゲーム名で検索..." oninput="applyFilters()">
+        placeholder="🔍 ゲーム名で検索..." autocomplete="off" spellcheck="false"
+        oninput="applyFilters()" onkeyup="applyFilters()">
       <button class="search-clear" onclick="clearSearch()" title="クリア">✕</button>
     </div>
 
@@ -503,46 +504,56 @@ function clearSearch(){
   applyFilters();
 }
 
+// ── applyFilters: 検索・タブ・カテゴリすべての変更でリスト全再構築 ──
 function applyFilters(){
-  const q = $id('search-input').value.trim().toLowerCase();
+  const q = ($id('search-input').value || '').trim().toLowerCase();
   const gameMap = buildGameMap();
   const windowMs = rankTab==='7d'?WEEK_MS:rankTab==='30d'?MON_MS:0;
   const isNow = rankTab==='now';
 
-  // Build sorted list
   let entries = [...gameMap.values()]
     .map(g=>{
       const latest = g.entries.at(-1);
-      const favLatest = g.entries.length ? g.entries.at(-1).favourites : 0;
-      const avg = isNow ? latest?.ccu||0 : avgCCU(g.entries, windowMs);
-      return {...g, latestCCU: latest?.ccu||0, favourites: favLatest, sortVal: avg??-1, avg};
+      const avg = isNow ? (latest?.ccu||0) : avgCCU(g.entries, windowMs);
+      return {
+        ...g,
+        latestCCU: latest?.ccu||0,
+        favourites: g.entries.at(-1)?.favourites||0,
+        sortVal: avg??-1,
+        avg,
+      };
     })
     .filter(g=>g.sortVal>=0)
     .sort((a,b)=>b.sortVal-a.sortVal);
 
-  // Category filter
+  // カテゴリフィルタ
   if(selCat!=='all') entries=entries.filter(g=>g.gameCategory===selCat);
 
-  // Search filter
-  if(q) entries=entries.filter(g=>g.name.toLowerCase().includes(q));
+  // 検索フィルタ（名前・説明の両方から）
+  if(q) entries=entries.filter(g=>
+    g.name.toLowerCase().includes(q) ||
+    (g.description||'').toLowerCase().includes(q)
+  );
 
   const list=$id('game-list');
   list.innerHTML='';
-  $id('no-result').style.display=entries.length?'none':'block';
+  $id('no-result').style.display = entries.length ? 'none' : 'block';
 
-  entries.forEach((g,i)=>{
+  let rank = 0;
+  entries.forEach((g)=>{
+    rank++;
     const card=document.createElement('div');
     card.className='game-card';
     card.onclick=()=>goDetail(g.schematicId);
 
-    const rankClass = i===0?'gc-rank-1':i===1?'gc-rank-2':i===2?'gc-rank-3':'gc-rank-n';
+    const rankClass = rank===1?'gc-rank-1':rank===2?'gc-rank-2':rank===3?'gc-rank-3':'gc-rank-n';
     const icon = CAT_ICON[g.gameCategory]||'🎮';
     const valDisplay = isNow
       ? `<div class="gc-ccu">${fmtN(g.latestCCU)}</div><div class="gc-ccu-lbl">プレイヤー</div>`
       : `<div class="gc-avg">${g.avg!==null?fmtN(g.avg):'—'}</div><div class="gc-ccu-lbl">平均CCU</div>`;
 
     card.innerHTML=`
-      <div class="game-card-rank ${rankClass}">${i+1}</div>
+      <div class="game-card-rank ${rankClass}">${rank}</div>
       <div class="game-card-body">
         <div class="gc-name">${escHtml(g.name)}<span class="gc-cat">${icon} ${escHtml(g.gameCategory)}</span></div>
         <div class="gc-desc">${g.description?escHtml(g.description):'説明なし'}</div>
@@ -554,6 +565,8 @@ function applyFilters(){
     list.appendChild(card);
   });
 }
+
+
 
 /* ══════════════════════════════════
    DETAIL
@@ -721,6 +734,12 @@ function escHtml(s){
 }
 
 /* ── boot ── */
+// Escキーで検索クリア（oninput/onkeyupはHTML属性で直接設定済み）
+document.addEventListener('keydown', function(e){
+  if(!e.target || e.target.id !== 'search-input') return;
+  if(e.key === 'Escape'){ e.target.value = ''; applyFilters(); }
+});
+
 fetchAndRender();
 </script>
 </body>
