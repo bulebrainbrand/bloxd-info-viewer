@@ -10,6 +10,7 @@
       rel="stylesheet"
     />
     <script src="https://cdnjs.cloudflare.com/ajax/libs/Chart.js/4.4.1/chart.umd.min.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/chartjs-adapter-date-fns@3/dist/chartjs-adapter-date-fns.bundle.min.js"></script>
     <style>
       :root {
         --bg: #050c18;
@@ -1928,14 +1929,37 @@
         if (!el) return;
         charts[id] = new Chart(el.getContext("2d"), cfg);
       }
+      // データ間隔が1分〜1日でバラけても X 軸が実時間で正確に表示される
       function scaleOpts(spanMs) {
+        let unit, stepSize;
+        if      (spanMs >= 86400000 * 90) { unit = "week";   stepSize = 1; }
+        else if (spanMs >= 86400000 * 14) { unit = "day";    stepSize = 1; }
+        else if (spanMs >= 86400000 * 3)  { unit = "day";    stepSize = 1; }
+        else if (spanMs >= 86400000)      { unit = "hour";   stepSize = 6; }
+        else if (spanMs >= 3600000 * 6)   { unit = "hour";   stepSize = 1; }
+        else if (spanMs >= 3600000 * 2)   { unit = "minute"; stepSize = 30; }
+        else                              { unit = "minute"; stepSize = 5; }
         return {
           x: {
+            type: "time",
+            time: {
+              unit,
+              stepSize,
+              displayFormats: {
+                minute: "HH:mm",
+                hour:   "M/d HH:mm",
+                day:    "M/d",
+                week:   "M/d",
+                month:  "yyyy/M",
+              },
+              tooltipFormat: "yyyy/MM/dd HH:mm",
+            },
             ticks: {
               color: "#3d5470",
               font: { family: "JetBrains Mono", size: 8 },
               maxTicksLimit: 8,
               maxRotation: 0,
+              source: "auto",
             },
             grid: { color: "rgba(26,46,74,.35)" },
           },
@@ -1943,7 +1967,7 @@
             ticks: {
               color: "#3d5470",
               font: { family: "JetBrains Mono", size: 8 },
-              callback: (v) => (v >= 1000 ? `${(v / 1000).toFixed(1)}k` : v),
+              callback: (v) => v >= 1000 ? `${(v / 1000).toFixed(1)}k` : v,
             },
             grid: { color: "rgba(26,46,74,.35)" },
           },
@@ -2177,12 +2201,12 @@
           mkChart("ch-ranked-trend", {
             type: "line",
             data: {
-              labels: recent.map((s) =>
-                fmtLabel(new Date(s.at).getTime(), recSpanMs),
-              ),
               datasets: (rAllKeys.length ? rAllKeys : rKeys).map((k, i) => ({
                 label: nm(k),
-                data: recent.map((s) => s.data[k] || 0),
+                data: recent.map((s) => ({
+                  x: new Date(s.at).getTime(),
+                  y: s.data[k] || 0,
+                })),
                 borderColor: MODE_COLORS[i],
                 backgroundColor: MODE_COLORS[i] + "18",
                 tension: 0.4,
@@ -2206,7 +2230,7 @@
                 },
                 tooltip: {
                   callbacks: {
-                    label: (c) => `${c.dataset.label}: ${fmtNum(c.raw)}人`,
+                    label: (c) => `${c.dataset.label}: ${fmtNum(c.parsed.y)}人`,
                   },
                 },
               },
@@ -2218,36 +2242,30 @@
         }
 
         // ── トレンドチャート ──
-        const recLabels = recent.map((s) =>
-          fmtLabel(new Date(s.at).getTime(), recSpanMs),
-        );
-
         mkChart("ch-total", {
           type: "line",
           data: {
-            labels: recLabels,
-            datasets: [
-              {
-                label: "総プレイヤー数",
-                fill: true,
-                data: recent.map((s) =>
-                  Object.values(s.data).reduce((a, b) => a + b, 0),
-                ),
-                borderColor: "#00d9ff",
-                backgroundColor: "rgba(0,217,255,.08)",
-                tension: 0.4,
-                pointRadius: recent.length > 30 ? 0 : 3,
-                pointBackgroundColor: "#00d9ff",
-                borderWidth: 2,
-              },
-            ],
+            datasets: [{
+              label: "総プレイヤー数",
+              fill: true,
+              data: recent.map((s) => ({
+                x: new Date(s.at).getTime(),
+                y: Object.values(s.data).reduce((a, b) => a + b, 0),
+              })),
+              borderColor: "#00d9ff",
+              backgroundColor: "rgba(0,217,255,.08)",
+              tension: 0.4,
+              pointRadius: recent.length > 30 ? 0 : 3,
+              pointBackgroundColor: "#00d9ff",
+              borderWidth: 2,
+            }],
           },
           options: {
             responsive: true,
             maintainAspectRatio: false,
             plugins: {
               legend: { display: false },
-              tooltip: { callbacks: { label: (c) => `${fmtNum(c.raw)}人` } },
+              tooltip: { callbacks: { label: (c) => `${fmtNum(c.parsed.y)}人` } },
             },
             scales: scaleOpts(recSpanMs),
           },
@@ -2265,10 +2283,12 @@
         mkChart("ch-main", {
           type: "line",
           data: {
-            labels: recLabels,
             datasets: mainKeys.map((m) => ({
               label: nm(m.k),
-              data: recent.map((s) => s.data[m.k] || 0),
+              data: recent.map((s) => ({
+                x: new Date(s.at).getTime(),
+                y: s.data[m.k] || 0,
+              })),
               borderColor: m.c,
               backgroundColor: m.c + "18",
               tension: 0.4,
@@ -2292,7 +2312,7 @@
               },
               tooltip: {
                 callbacks: {
-                  label: (c) => `${c.dataset.label}: ${fmtNum(c.raw)}人`,
+                  label: (c) => `${c.dataset.label}: ${fmtNum(c.parsed.y)}人`,
                 },
               },
             },
@@ -2422,30 +2442,26 @@
 
       function renderFullPeriod(rankEntries, spanMs) {
         const decTotal = decimateTotal(MAX_PTS);
-        const labels = decTotal.map((p) => fmtLabel(p.t, spanMs));
         mkChart("ch-fp-total", {
           type: "line",
           data: {
-            labels,
-            datasets: [
-              {
-                label: "総プレイヤー数",
-                fill: true,
-                data: decTotal.map((p) => p.v),
-                borderColor: "#00d9ff",
-                backgroundColor: "rgba(0,217,255,.07)",
-                tension: 0.3,
-                pointRadius: decTotal.length > 100 ? 0 : 2,
-                borderWidth: 2,
-              },
-            ],
+            datasets: [{
+              label: "総プレイヤー数",
+              fill: true,
+              data: decTotal.map((p) => ({ x: p.t, y: p.v })),
+              borderColor: "#00d9ff",
+              backgroundColor: "rgba(0,217,255,.07)",
+              tension: 0.3,
+              pointRadius: decTotal.length > 100 ? 0 : 2,
+              borderWidth: 2,
+            }],
           },
           options: {
             responsive: true,
             maintainAspectRatio: false,
             plugins: {
               legend: { display: false },
-              tooltip: { callbacks: { label: (c) => `${fmtNum(c.raw)}人` } },
+              tooltip: { callbacks: { label: (c) => `${fmtNum(c.parsed.y)}人` } },
             },
             scales: scaleOpts(spanMs),
           },
@@ -2457,12 +2473,11 @@
         mkChart("ch-fp-modes", {
           type: "line",
           data: {
-            labels,
             datasets: top10.map(([k], i) => {
               const dec = decimateKey(k, MAX_PTS);
               return {
                 label: nm(k),
-                data: dec.map((p) => p.v),
+                data: dec.map((p) => ({ x: p.t, y: p.v })),
                 borderColor: MODE_COLORS[i % MODE_COLORS.length],
                 backgroundColor: MODE_COLORS[i % MODE_COLORS.length] + "12",
                 tension: 0.3,
@@ -2487,7 +2502,7 @@
               },
               tooltip: {
                 callbacks: {
-                  label: (c) => `${c.dataset.label}: ${fmtNum(c.raw)}人`,
+                  label: (c) => `${c.dataset.label}: ${fmtNum(c.parsed.y)}人`,
                 },
               },
             },
@@ -2529,20 +2544,17 @@
         mkChart("ch-exp", {
           type: "line",
           data: {
-            labels: dec.map((p) => fmtLabel(p.t, spanMs)),
-            datasets: [
-              {
-                label: nm(k),
-                fill: true,
-                data: dec.map((p) => p.v),
-                borderColor: "#00d9ff",
-                backgroundColor: "rgba(0,217,255,.07)",
-                tension: 0.4,
-                pointRadius: dec.length > 80 ? 0 : 3,
-                pointBackgroundColor: "#00d9ff",
-                borderWidth: 2,
-              },
-            ],
+            datasets: [{
+              label: nm(k),
+              fill: true,
+              data: dec.map((p) => ({ x: p.t, y: p.v })),
+              borderColor: "#00d9ff",
+              backgroundColor: "rgba(0,217,255,.07)",
+              tension: 0.4,
+              pointRadius: dec.length > 80 ? 0 : 3,
+              pointBackgroundColor: "#00d9ff",
+              borderWidth: 2,
+            }],
           },
           options: {
             responsive: true,
@@ -2550,7 +2562,7 @@
             animation: { duration: 180 },
             plugins: {
               legend: { display: false },
-              tooltip: { callbacks: { label: (c) => `${fmtNum(c.raw)}人` } },
+              tooltip: { callbacks: { label: (c) => `${fmtNum(c.parsed.y)}人` } },
             },
             scales: scaleOpts(spanMs),
           },
