@@ -90,6 +90,13 @@ main{max-width:900px;margin:0 auto;padding:68px 14px 64px;position:relative;z-in
 .rank-tabs{display:flex;gap:4px;margin-bottom:14px}
 .rtab{font-size:10px;font-weight:600;padding:6px 16px;border-radius:20px;border:1px solid var(--bdr);background:transparent;color:var(--txt2);cursor:pointer;transition:all .2s}
 .rtab:hover,.rtab.on{background:rgba(0,217,255,.1);border-color:var(--c1);color:var(--c1)}
+/* sort toggle */
+.sort-row{display:flex;gap:6px;align-items:center;margin-bottom:12px}
+.sort-lbl{font-size:10px;color:var(--txt3);letter-spacing:.5px;flex-shrink:0}
+.stab{font-size:10px;font-weight:600;padding:5px 13px;border-radius:18px;border:1px solid var(--bdr);background:transparent;color:var(--txt2);cursor:pointer;transition:all .2s;display:flex;align-items:center;gap:4px}
+.stab:hover{border-color:var(--bdr2);color:var(--txt)}
+.stab.on{background:rgba(255,214,0,.1);border-color:var(--yellow);color:var(--yellow)}
+.stab.on.ccu{background:rgba(0,217,255,.1);border-color:var(--c1);color:var(--c1)}
 
 /* ── GAME CARD (list) ── */
 .game-list{display:flex;flex-direction:column;gap:7px}
@@ -239,8 +246,15 @@ footer a:hover{color:var(--c1)}
       <button class="rtab" onclick="switchRankTab('7d',this)">7日平均</button>
       <button class="rtab" onclick="switchRankTab('30d',this)">30日平均</button>
     </div>
+    <!-- Sort toggle -->
+    <div class="sort-row">
+      <span class="sort-lbl">並び順：</span>
+      <button class="stab ccu on" id="sort-ccu" onclick="switchSort('ccu',this)">👥 プレイヤー数</button>
+      <button class="stab" id="sort-fav" onclick="switchSort('fav',this)">⭐ スター数</button>
+    </div>
 
     <div class="game-list" id="game-list"></div>
+    <div id="list-sentinel" style="height:1px"></div>
     <div class="no-result" id="no-result" style="display:none">該当するゲームがありません</div>
   </div>
 
@@ -324,9 +338,13 @@ const CAT_ICON = {
 /* ── state ── */
 let snapshots = [];       // [{at, data:{results:[...]}}]
 let rankTab   = 'now';
+let sortBy    = 'ccu';   // 'ccu' | 'fav'
 let selCat    = 'all';
 let charts    = {};
-let _gameMap  = null;     // buildGameMap のキャッシュ
+let _gameMap      = null;  // buildGameMap のキャッシュ
+let _filteredList = [];    // 現在のフィルタ済み全リスト
+let _renderOffset = 0;     // 何件まで DOM に出力済みか
+const BATCH = 40;          // 1回に描画するアイテム数
 
 const $id = id => document.getElementById(id);
 const fmtN = v => (v||0).toLocaleString('ja-JP');
@@ -466,8 +484,11 @@ function updateInfoBar(){
 }
 
 function buildCatButtons(){
-  // データ読み込み後に1度だけ呼ぶ。selCat をリセットして UI と状態を同期
+  // データ読み込み後に1度だけ呼ぶ。selCat・sortBy をリセットして UI と状態を同期
   selCat = 'all';
+  sortBy = 'ccu';
+  document.querySelectorAll('.stab').forEach(b=>b.classList.remove('on'));
+  const ccuBtn=$id('sort-ccu'); if(ccuBtn) ccuBtn.classList.add('on');
   const cats = new Set();
   snapshots.forEach(s=>(s.data?.results||[]).forEach(g=>cats.add(g.gameCategory)));
   const row = $id('cat-row');
@@ -499,72 +520,130 @@ function switchRankTab(tab,btn){
   applyFilters();
 }
 
+function switchSort(key,btn){
+  sortBy=key;
+  document.querySelectorAll('.stab').forEach(b=>b.classList.remove('on'));
+  btn.classList.add('on');
+  applyFilters();
+}
+
 function clearSearch(){
   $id('search-input').value='';
   applyFilters();
 }
 
-// ── applyFilters: 検索・タブ・カテゴリすべての変更でリスト全再構築 ──
-function applyFilters(){
+/* ──────────────────────────────────────────────
+   仮想リスト実装
+   _filteredList = ソート・絞り込み済みの全配列（JS）
+   DOM には BATCH 件ずつ追加。センチネルが見えたら次バッチ
+────────────────────────────────────────────── */
+
+// ソート済み全件配列を構築（DOM 操作なし）
+function buildFilteredList(){
   const q = ($id('search-input').value || '').trim().toLowerCase();
   const gameMap = buildGameMap();
   const windowMs = rankTab==='7d'?WEEK_MS:rankTab==='30d'?MON_MS:0;
   const isNow = rankTab==='now';
 
-  let entries = [...gameMap.values()]
-    .map(g=>{
-      const latest = g.entries.at(-1);
-      const avg = isNow ? (latest?.ccu||0) : avgCCU(g.entries, windowMs);
-      return {
-        ...g,
-        latestCCU: latest?.ccu||0,
-        favourites: g.entries.at(-1)?.favourites||0,
-        sortVal: avg??-1,
-        avg,
-      };
-    })
-    .filter(g=>g.sortVal>=0)
-    .sort((a,b)=>b.sortVal-a.sortVal);
+  let list = [...gameMap.values()].map(g=>{
+    const latest = g.entries.at(-1);
+    const avg = isNow ? (latest?.ccu||0) : avgCCU(g.entries, windowMs);
+    const favVal = g.entries.at(-1)?.favourites||0;
+    // sortBy='fav' の場合はスター数でソート、'ccu' の場合は人数でソート
+    const sortVal = sortBy==='fav' ? favVal : (avg??-1);
+    return {
+      ...g,
+      latestCCU: latest?.ccu||0,
+      favourites: favVal,
+      sortVal,
+      avg,
+    };
+  }).filter(g=>g.sortVal>=0).sort((a,b)=>b.sortVal-a.sortVal);
 
-  // カテゴリフィルタ
-  if(selCat!=='all') entries=entries.filter(g=>g.gameCategory===selCat);
-
-  // 検索フィルタ（名前・説明の両方から）
-  if(q) entries=entries.filter(g=>
-    g.name.toLowerCase().includes(q) ||
-    (g.description||'').toLowerCase().includes(q)
+  if(selCat!=='all') list=list.filter(g=>g.gameCategory===selCat);
+  if(q) list=list.filter(g=>
+    g.name.toLowerCase().includes(q)||(g.description||'').toLowerCase().includes(q)
   );
-
-  const list=$id('game-list');
-  list.innerHTML='';
-  $id('no-result').style.display = entries.length ? 'none' : 'block';
-
-  let rank = 0;
-  entries.forEach((g)=>{
-    rank++;
-    const card=document.createElement('div');
-    card.className='game-card';
-    card.onclick=()=>goDetail(g.schematicId);
-
-    const rankClass = rank===1?'gc-rank-1':rank===2?'gc-rank-2':rank===3?'gc-rank-3':'gc-rank-n';
-    const icon = CAT_ICON[g.gameCategory]||'🎮';
-    const valDisplay = isNow
-      ? `<div class="gc-ccu">${fmtN(g.latestCCU)}</div><div class="gc-ccu-lbl">プレイヤー</div>`
-      : `<div class="gc-avg">${g.avg!==null?fmtN(g.avg):'—'}</div><div class="gc-ccu-lbl">平均CCU</div>`;
-
-    card.innerHTML=`
-      <div class="game-card-rank ${rankClass}">${rank}</div>
-      <div class="game-card-body">
-        <div class="gc-name">${escHtml(g.name)}<span class="gc-cat">${icon} ${escHtml(g.gameCategory)}</span></div>
-        <div class="gc-desc">${g.description?escHtml(g.description):'説明なし'}</div>
-      </div>
-      <div class="game-card-stats">
-        ${valDisplay}
-        <div class="gc-fav">⭐ ${fmtN(g.favourites)}</div>
-      </div>`;
-    list.appendChild(card);
-  });
+  return list;
 }
+
+// カードの HTML 文字列を生成（createElement より高速）
+function makeCardHTML(g, rank, isNow){
+  const rankClass = rank===1?'gc-rank-1':rank===2?'gc-rank-2':rank===3?'gc-rank-3':'gc-rank-n';
+  const icon = CAT_ICON[g.gameCategory]||'🎮';
+  // スター順のとき: スター数を主表示、CCU をサブ表示
+  let val, sub;
+  if(sortBy==='fav'){
+    val = `<div class="gc-avg" style="color:var(--yellow)">${fmtN(g.favourites)}</div><div class="gc-ccu-lbl">スター</div>`;
+    sub = `<div class="gc-fav" style="color:var(--txt3)">👥 ${fmtN(g.latestCCU)}</div>`;
+  } else if(isNow){
+    val = `<div class="gc-ccu">${fmtN(g.latestCCU)}</div><div class="gc-ccu-lbl">プレイヤー</div>`;
+    sub = `<div class="gc-fav">⭐ ${fmtN(g.favourites)}</div>`;
+  } else {
+    val = `<div class="gc-avg">${g.avg!==null?fmtN(g.avg):'—'}</div><div class="gc-ccu-lbl">平均CCU</div>`;
+    sub = `<div class="gc-fav">⭐ ${fmtN(g.favourites)}</div>`;
+  }
+  return `<div class="game-card" data-id="${escAttr(g.schematicId)}" tabindex="0">
+    <div class="game-card-rank ${rankClass}">${rank}</div>
+    <div class="game-card-body">
+      <div class="gc-name">${escHtml(g.name)}<span class="gc-cat">${icon} ${escHtml(g.gameCategory)}</span></div>
+      <div class="gc-desc">${g.description?escHtml(g.description):'説明なし'}</div>
+    </div>
+    <div class="game-card-stats">${val}${sub}</div>
+  </div>`;
+}
+
+// 次バッチを DOM に追記
+function appendBatch(){
+  const isNow = rankTab==='now';
+  const list = $id('game-list');
+  const end = Math.min(_renderOffset+BATCH, _filteredList.length);
+  if(_renderOffset >= _filteredList.length) return;
+
+  // DocumentFragment でまとめて挿入
+  const frag = document.createDocumentFragment();
+  const tmp = document.createElement('div');
+  for(let i=_renderOffset; i<end; i++){
+    tmp.innerHTML = makeCardHTML(_filteredList[i], i+1, isNow);
+    frag.appendChild(tmp.firstElementChild);
+  }
+  list.appendChild(frag);
+  _renderOffset = end;
+}
+
+// フィルタを再計算してリストをリセット
+function applyFilters(){
+  _filteredList = buildFilteredList();
+  _renderOffset = 0;
+  $id('game-list').innerHTML = '';
+  $id('no-result').style.display = _filteredList.length ? 'none' : 'block';
+  appendBatch();
+}
+
+// 検索入力専用（applyFilters と同じだが名前を分ける）
+function applySearchFilter(){ applyFilters(); }
+
+// クリックイベントはリストへの event delegation で処理
+$id('game-list').addEventListener('click', e=>{
+  const card = e.target.closest('.game-card');
+  if(card && card.dataset.id) goDetail(card.dataset.id);
+});
+$id('game-list').addEventListener('keydown', e=>{
+  if(e.key==='Enter'){
+    const card=e.target.closest('.game-card');
+    if(card&&card.dataset.id) goDetail(card.dataset.id);
+  }
+});
+
+// センチネル（リスト末尾）が見えたら次バッチ追加
+(function setupSentinel(){
+  const sentinel = $id('list-sentinel');
+  if(!sentinel) return;
+  const io = new IntersectionObserver(entries=>{
+    if(entries[0].isIntersecting) appendBatch();
+  }, {rootMargin:'200px'});
+  io.observe(sentinel);
+})();
 
 
 
@@ -731,6 +810,9 @@ function copyUrl(){
 
 function escHtml(s){
   return String(s).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;');
+}
+function escAttr(s){
+  return String(s).replace(/"/g,'&quot;').replace(/'/g,'&#39;');
 }
 
 /* ── boot ── */
