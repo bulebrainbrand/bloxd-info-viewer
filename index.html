@@ -11,6 +11,8 @@
     />
     <script src="https://cdnjs.cloudflare.com/ajax/libs/Chart.js/4.4.1/chart.umd.min.js"></script>
     <script src="https://cdn.jsdelivr.net/npm/chartjs-adapter-date-fns@3/dist/chartjs-adapter-date-fns.bundle.min.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/hammerjs@2.0.8/hammer.min.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/chartjs-plugin-zoom@2.0.1/dist/chartjs-plugin-zoom.min.js"></script>
     <style>
       :root {
         --bg: #050c18;
@@ -89,10 +91,63 @@
         text-shadow: 0 0 14px var(--c1);
         margin-right: auto;
         white-space: nowrap;
+        text-decoration: none;
+        display: inline-block;
       }
+      .nav-logo:hover { opacity: .85; }
       .nav-logo span {
         color: var(--txt3);
       }
+      /* ── エクスプローラー 時間範囲 & スライド ── */
+      .exp-range-row {
+        display: flex;
+        align-items: center;
+        gap: 5px;
+        flex-wrap: wrap;
+        margin-bottom: 10px;
+      }
+      .exp-range-lbl {
+        font-size: 9px;
+        color: var(--txt3);
+        letter-spacing: 1px;
+        flex-shrink: 0;
+        margin-right: 2px;
+      }
+      .exp-rbtn {
+        font-size: 10px;
+        font-weight: 600;
+        padding: 4px 11px;
+        border-radius: 18px;
+        border: 1px solid var(--bdr);
+        background: transparent;
+        color: var(--txt2);
+        cursor: pointer;
+        transition: all .2s;
+        white-space: nowrap;
+      }
+      .exp-rbtn:hover { border-color: var(--bdr2); color: var(--txt); }
+      .exp-rbtn.on { background: rgba(0,217,255,.1); border-color: var(--c1); color: var(--c1); }
+      /* パン情報バー */
+      .exp-pan-info {
+        font-family: var(--fm);
+        font-size: 9px;
+        color: var(--txt3);
+        text-align: center;
+        margin-bottom: 6px;
+        white-space: nowrap;
+        overflow: hidden;
+        text-overflow: ellipsis;
+      }
+      .exp-pan-hint {
+        font-size: 9px;
+        color: var(--txt3);
+        text-align: right;
+        margin-bottom: 4px;
+        letter-spacing: .3px;
+      }
+      /* パン中はグラブカーソル */
+      #ch-exp { cursor: grab; }
+      #ch-exp:active { cursor: grabbing; }
       .nav-links {
         display: flex;
         gap: 1px;
@@ -998,7 +1053,7 @@
   </head>
   <body>
     <nav id="nav">
-      <div class="nav-logo">⬡ GAME<span>STAT</span></div>
+      <a href="main.html" class="nav-logo" style="text-decoration:none">⬡ GAME<span>STAT</span></a>
       <div class="nav-links">
         <a href="#overview">概要</a>
         <a href="#ranking">ランキング</a>
@@ -1259,6 +1314,16 @@
               &#8594;
             </button>
           </div>
+          <div class="exp-range-row">
+            <span class="exp-range-lbl">表示幅:</span>
+            <button class="exp-rbtn on" data-range="50"  onclick="setExpRange('50',this)">直近50件</button>
+            <button class="exp-rbtn"   data-range="1d"   onclick="setExpRange('1d',this)">1日</button>
+            <button class="exp-rbtn"   data-range="7d"   onclick="setExpRange('7d',this)">1週間</button>
+            <button class="exp-rbtn"   data-range="1y"   onclick="setExpRange('1y',this)">1年</button>
+            <button class="exp-rbtn"   data-range="all"  onclick="setExpRange('all',this)">全期間</button>
+          </div>
+          <div class="exp-pan-info" id="exp-window-info">—</div>
+          <div class="exp-pan-hint">← ドラッグ / スワイプで過去・現在を移動 →</div>
           <div class="exp-stats" id="exp-stats"></div>
           <div class="exp-chart-wrap" style="height: 200px">
             <canvas id="ch-exp"></canvas>
@@ -1857,6 +1922,9 @@
         expIndex = 0,
         expFiltered = null,
         fpSpanMs = 0;
+      // エクスプローラー 時間範囲・スライド
+      let expRange = '50';        // '50'|'1d'|'7d'|'1y'|'all'
+      let expWindowEnd = null;    // null = 最新端に固定; ms timestamp = 表示ウィンドウの右端
       const $id = (id) => document.getElementById(id);
 
       function setStatus(s, t) {
@@ -2521,37 +2589,138 @@
       }
 
       /* ── Explorer ── */
+      // ── エクスプローラー: 表示ウィンドウ計算 ──
+      function getExpWindow(allPts) {
+        // allPts: [{t, v}] 全期間の decimated or raw 点列
+        if (!allPts.length) return { pts: [], winStart: 0, winEnd: 0, canOlder: false, canNewer: false };
+
+        const lastT  = allPts[allPts.length - 1].t;
+        const firstT = allPts[0].t;
+        const DAY = 86400000;
+
+        // ウィンドウ幅 (ms)。'50' はデータ点数ベース
+        let winMs = 0;
+        if      (expRange === '1d') winMs = DAY;
+        else if (expRange === '7d') winMs = 7  * DAY;
+        else if (expRange === '1y') winMs = 365* DAY;
+
+        // expWindowEnd: null → 常に最新端に追従
+        const winEnd = expWindowEnd !== null ? expWindowEnd : lastT;
+        let pts, winStart;
+
+        if (expRange === 'all') {
+          pts      = allPts;
+          winStart = firstT;
+          expWindowEnd = null; // 全期間は常に全体
+        } else if (expRange === '50') {
+          // 直近50件（スライドで過去方向に動かす）
+          const endIdx = expWindowEnd !== null
+            ? Math.max(0, allPts.findIndex(p => p.t >= expWindowEnd))
+            : allPts.length - 1;
+          const startIdx = Math.max(0, endIdx - 49);
+          pts      = allPts.slice(startIdx, endIdx + 1);
+          winStart = pts[0]?.t ?? firstT;
+        } else {
+          // 時間幅ウィンドウ
+          winStart = winEnd - winMs;
+          pts = allPts.filter(p => p.t >= winStart && p.t <= winEnd);
+          if (!pts.length) {
+            // ウィンドウ内にデータなし → 直近のデータにスナップ
+            const near = [...allPts].reverse().find(p => p.t <= winEnd) || allPts[allPts.length - 1];
+            winStart = near.t - winMs;
+            pts = allPts.filter(p => p.t >= winStart && p.t <= near.t);
+          }
+        }
+
+        return { pts, winStart: pts[0]?.t ?? winStart, winEnd: pts[pts.length-1]?.t ?? winEnd, lastT, firstT };
+      }
+
       function renderExplorer(spanMs) {
         const keys = expFiltered || expKeys;
         if (!keys.length) return;
         expIndex = Math.min(expIndex, keys.length - 1);
         const k = keys[expIndex];
         const d = snapshots[snapshots.length - 1].data;
-        const vals = snapshots.map((s) => s.data[k] || 0);
-        const dec = decimateKey(k, MAX_PTS);
-        $id("exp-name").textContent = nm(k);
-        $id("exp-cat").textContent = catLabel(k);
+
+        // 全点列（LTTBしない、スライド判定用）
+        const allPts = snapshots.map(s => ({ t: new Date(s.at).getTime(), v: s.data[k] || 0 }));
+        allPts.sort((a, b) => a.t - b.t);
+
+        // ウィンドウ計算
+        const { pts, winStart, winEnd, canOlder, canNewer, lastT, firstT } = getExpWindow(allPts);
+
+        // モード切り替えボタン更新
+        $id("exp-name").textContent    = nm(k);
+        $id("exp-cat").textContent     = catLabel(k);
         $id("exp-counter").textContent = `${expIndex + 1} / ${keys.length}`;
         $id("exp-prev").disabled = expIndex === 0;
         $id("exp-next").disabled = expIndex === keys.length - 1;
-        const peak = Math.max(...vals),
-          avg = Math.round(vals.reduce((a, b) => a + b, 0) / vals.length);
+
+        // stats は全点列ベース
+        const vals = allPts.map(p => p.v);
+        const peak = Math.max(...vals);
+        const avg  = Math.round(vals.reduce((a, b) => a + b, 0) / vals.length);
         $id("exp-stats").innerHTML = `
     <div class="exp-stat">現在 <strong>${fmtNum(d[k] || 0)}</strong></div>
     <div class="exp-stat">最大 <strong>${fmtNum(peak)}</strong></div>
     <div class="exp-stat">平均 <strong>${fmtNum(avg)}</strong></div>
     <div class="exp-stat">記録数 <strong>${fmtNum(vals.length)}</strong></div>`;
+
+        // ── 全データをチャートに渡す（LTTBで間引き） ──
+        const fullPts = allPts.length > MAX_PTS ? lttb(allPts, MAX_PTS) : allPts;
+
+        // 表示するX軸ウィンドウ (min/max)
+        const xMax = (expWindowEnd !== null) ? expWindowEnd : lastT;
+        let xMin;
+        const DAY = 86400000;
+        if      (expRange === 'all') { xMin = firstT; }
+        else if (expRange === '50') {
+          const endIdx = fullPts.findIndex(p => p.t >= xMax);
+          const ei = endIdx < 0 ? fullPts.length - 1 : endIdx;
+          xMin = fullPts[Math.max(0, ei - 49)].t;
+        }
+        else if (expRange === '1d') { xMin = xMax - DAY; }
+        else if (expRange === '7d') { xMin = xMax - 7 * DAY; }
+        else                        { xMin = xMax - 365 * DAY; }
+
+        const ptsSpan = xMax - xMin || fpSpanMs;
+
+        // Y軸: 全データで固定
+        const allVals = allPts.map(p => p.v);
+        const yMin = Math.max(0, Math.min(...allVals));
+        const yMax = Math.max(...allVals);
+        const yPad = (yMax - yMin) * 0.08 || 1;
+
+        // 時刻フォーマット（1か所のみ定義）
+        const fmtD = t => {
+          const dt = new Date(t);
+          return `${dt.getMonth()+1}/${dt.getDate()} ${String(dt.getHours()).padStart(2,'0')}:${String(dt.getMinutes()).padStart(2,'0')}`;
+        };
+
+        // ウィンドウ情報テキスト（fmtD定義後に設定）
+        const wSpan = xMax - xMin;
+        $id("exp-window-info").textContent = expRange === 'all'
+          ? `全期間 (${fmtSpan(wSpan)})`
+          : `${fmtD(xMin)} 〜 ${fmtD(xMax)}`;
+
+        // パン後にウィンドウ情報を更新するコールバック
+        const onPanComplete = ({ chart }) => {
+          const xs = chart.scales.x;
+          expWindowEnd = xs.max >= lastT - 60000 ? null : xs.max;
+          $id("exp-window-info").textContent = `${fmtD(xs.min)} 〜 ${fmtD(xs.max)}`;
+        };
+
         mkChart("ch-exp", {
           type: "line",
           data: {
             datasets: [{
               label: nm(k),
               fill: true,
-              data: dec.map((p) => ({ x: p.t, y: p.v })),
+              data: fullPts.map(p => ({ x: p.t, y: p.v })),
               borderColor: "#00d9ff",
               backgroundColor: "rgba(0,217,255,.07)",
               tension: 0.4,
-              pointRadius: dec.length > 80 ? 0 : 3,
+              pointRadius: fullPts.length > 80 ? 0 : 3,
               pointBackgroundColor: "#00d9ff",
               borderWidth: 2,
             }],
@@ -2559,38 +2728,60 @@
           options: {
             responsive: true,
             maintainAspectRatio: false,
-            animation: { duration: 180 },
+            animation: { duration: 150 },
             plugins: {
               legend: { display: false },
               tooltip: { callbacks: { label: (c) => `${fmtNum(c.parsed.y)}人` } },
+              zoom: expRange !== 'all' ? {
+                pan: { enabled: true, mode: 'x', onPanComplete },
+                limits: { x: { min: firstT, max: lastT } },
+              } : { pan: { enabled: false } },
             },
-            scales: scaleOpts(spanMs),
+            scales: (() => {
+              const base = scaleOpts(ptsSpan);
+              // X軸: ウィンドウのみ表示
+              base.x.min = xMin;
+              base.x.max = xMax;
+              // Y軸: 全期間固定
+              base.y.min = Math.max(0, yMin - yPad);
+              base.y.max = yMax + yPad;
+              return base;
+            })(),
           },
         });
+
         const w = $id("ch-exp").parentElement;
         w.classList.remove("exp-anim");
         void w.offsetWidth;
         w.classList.add("exp-anim");
       }
+
+      function setExpRange(range, btn) {
+        expRange     = range;
+        expWindowEnd = null; // 範囲変更時は最新端にリセット
+        document.querySelectorAll(".exp-rbtn").forEach(b => b.classList.remove("on"));
+        btn.classList.add("on");
+        renderExplorer(fpSpanMs);
+      }
+
+      // スライド: dir=-1→過去, dir=1→現在
       function expNav(dir) {
-        expIndex = Math.max(
-          0,
-          Math.min((expFiltered || expKeys).length - 1, expIndex + dir),
-        );
+        expIndex = Math.max(0, Math.min((expFiltered || expKeys).length - 1, expIndex + dir));
+        expWindowEnd = null; // モード切り替え時は最新端にリセット
         renderExplorer(fpSpanMs);
       }
       function expSearch(q) {
         const s = q.trim().toLowerCase();
         expFiltered = s
-          ? expKeys.filter(
-              (k) =>
-                nm(k).toLowerCase().includes(s) ||
-                k.toLowerCase().includes(s) ||
-                catLabel(k).toLowerCase().includes(s),
+          ? expKeys.filter(k =>
+              nm(k).toLowerCase().includes(s) ||
+              k.toLowerCase().includes(s) ||
+              catLabel(k).toLowerCase().includes(s)
             )
           : null;
         if (expFiltered && !expFiltered.length) expFiltered = null;
-        expIndex = 0;
+        expIndex     = 0;
+        expWindowEnd = null;
         renderExplorer(fpSpanMs);
       }
       document.addEventListener("keydown", (e) => {
@@ -2605,18 +2796,21 @@
       window.addEventListener("load", () => {
         const el = document.querySelector(".explorer-card");
         if (!el) return;
-        let tx = 0;
-        el.addEventListener("touchstart", (e) => (tx = e.touches[0].clientX), {
-          passive: true,
-        });
-        el.addEventListener(
-          "touchend",
-          (e) => {
-            if (Math.abs(tx - e.changedTouches[0].clientX) > 40)
-              expNav(tx > e.changedTouches[0].clientX ? 1 : -1);
-          },
-          { passive: true },
-        );
+        let tx = 0, ty = 0;
+        el.addEventListener("touchstart", (e) => {
+          tx = e.touches[0].clientX;
+          ty = e.touches[0].clientY;
+        }, { passive: true });
+        el.addEventListener("touchend", (e) => {
+          // グラフcanvas上のスワイプはpan操作なので無視
+          const chart = document.getElementById("ch-exp");
+          if (chart) {
+            const r = chart.getBoundingClientRect();
+            if (tx >= r.left && tx <= r.right && ty >= r.top && ty <= r.bottom) return;
+          }
+          const dx = tx - e.changedTouches[0].clientX;
+          if (Math.abs(dx) > 40) expNav(dx > 0 ? 1 : -1);
+        }, { passive: true });
       });
 
       /* ── Weekly ── */
